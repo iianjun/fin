@@ -1,0 +1,4 @@
+pre-commit:
+  jobs:
+    - name: biome
+      run: pnpm exec biome check --staged

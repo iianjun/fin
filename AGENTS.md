@@ -1,9 +1,5 @@
 # AGENTS.md
 
-## Language
-
-Use English for repository documentation, instructions, code, and code comments.
-
 ## Project map
 
 - See [CONTEXT.md](CONTEXT.md) when adding or changing product terminology.

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import { insertChangeRecord, runMutation } from './persistence.js'
 import { withVaultDatabase } from './vault.js'
 
 export type AccountNature = 'asset' | 'liability'
@@ -479,37 +480,4 @@ function recordAccountMutation(
   insertChangeRecord(database, 'account', String(account.id), 'updated', result)
 
   return result
-}
-
-function insertChangeRecord(
-  database: DatabaseSync,
-  entityType: 'vault_settings' | 'account',
-  entityId: string,
-  action: 'created' | 'updated',
-  payload: object,
-): void {
-  database
-    .prepare(
-      `INSERT INTO change_records (entity_type, entity_id, action, payload)
-       VALUES (?, ?, ?, json(?))`,
-    )
-    .run(entityType, entityId, action, JSON.stringify(payload))
-}
-
-function runMutation<Result>(database: DatabaseSync, mutation: () => Result): Result {
-  database.exec('BEGIN IMMEDIATE')
-
-  try {
-    const result = mutation()
-    database.exec('COMMIT')
-    return result
-  } catch (error) {
-    try {
-      database.exec('ROLLBACK')
-    } catch {
-      // Preserve the mutation error if SQLite already rolled the transaction back.
-    }
-
-    throw error
-  }
 }

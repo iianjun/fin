@@ -39,7 +39,8 @@ node apps/mcp/dist/index.js
 
 The server exposes Vault lifecycle tools for initializing and opening a Vault, plus Account tools
 for creating, updating, listing, archiving, and reactivating Accounts and selecting or clearing
-the default Income and Expense Accounts. Every tool accepts a local Vault folder path. Mutation
+the default Income and Expense Accounts. Category tools create and maintain three-level
+hierarchies with complete current paths. Every tool accepts a local Vault folder path. Mutation
 responses report the material values that were actually applied.
 
 ## Design

@@ -3,6 +3,8 @@ import {
   type AccountCreation,
   type AccountMutationResult,
   type AccountUpdate,
+  type AdjustmentRequest,
+  type AdjustmentTransaction,
   archiveAccount,
   archiveCategory,
   type Category,
@@ -25,9 +27,11 @@ import {
   listCategories,
   listIncomeExpenseTransactions,
   openVault,
+  type RecordAdjustmentResult,
   type RecordIncomeExpenseResult,
   reactivateAccount,
   reactivateCategory,
+  recordAdjustment,
   recordIncomeExpense,
   type SetCategoryAssignmentsResult,
   type SetDefaultAccountResult,
@@ -60,6 +64,8 @@ import {
   listIncomeExpenseTransactionsInputSchema,
   listIncomeExpenseTransactionsOutputSchema,
   openVaultInputSchema,
+  recordAdjustmentInputSchema,
+  recordAdjustmentOutputSchema,
   recordIncomeExpenseInputSchema,
   recordIncomeExpenseOutputSchema,
   setCategoryAssignmentsInputSchema,
@@ -115,6 +121,7 @@ export type TransactionOperations = {
     transactionId: number,
   ) => TransactionClassification
   listIncomeExpenseTransactions: (vaultPath: string) => IncomeExpenseTransaction[]
+  recordAdjustment: (vaultPath: string, request: AdjustmentRequest) => RecordAdjustmentResult
   recordIncomeExpense: (
     vaultPath: string,
     creation: IncomeExpenseCreation,
@@ -145,6 +152,7 @@ const defaultOperations: FinOperations = {
   openVault,
   reactivateAccount,
   reactivateCategory,
+  recordAdjustment,
   recordIncomeExpense,
   setCategoryAssignments,
   setDefaultAccount,
@@ -390,6 +398,27 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       ),
   )
 
+  server.registerTool(
+    'record_adjustment',
+    {
+      title: 'Record Adjustment',
+      description:
+        'Apply a signed balance delta or calculate one from a requested target Account balance.',
+      inputSchema: recordAdjustmentInputSchema,
+      outputSchema: recordAdjustmentOutputSchema,
+    },
+    ({ path, accountId, occurredOn, amountMinor, targetBalanceMinor, memo }) =>
+      createRecordAdjustmentToolResult(
+        operations.recordAdjustment(path, {
+          accountId,
+          occurredOn,
+          amountMinor,
+          targetBalanceMinor,
+          memo,
+        }),
+      ),
+  )
+
   return server
 }
 
@@ -571,6 +600,27 @@ function createTransactionClassificationToolResult(result: TransactionClassifica
   }
 }
 
+function createRecordAdjustmentToolResult(result: RecordAdjustmentResult) {
+  const target =
+    result.requestedTargetBalanceMinor === null
+      ? 'Direct signed Adjustment.'
+      : `Requested target balance: ${result.requestedTargetBalanceMinor} ` +
+        `${result.transaction.account.currency}.`
+
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          `${formatAdjustmentTransaction(result.transaction)}. ${target} ` +
+          `Balance: ${result.previousBalanceMinor} + (${result.adjustmentAmountMinor}) = ` +
+          `${result.resultingBalanceMinor} minor units.`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
 function formatAccount(account: Account): string {
   return (
     `${formatNature(account.nature)} Account "${account.name}" ` +
@@ -586,6 +636,17 @@ function formatIncomeExpenseTransaction(transaction: IncomeExpenseTransaction): 
     `${formatNature(transaction.account.nature)} Account "${transaction.account.name}" ` +
     `(ID ${transaction.account.id}, ${transaction.account.currency}) — ` +
     `${formatTransactionKind(transaction.kind)} Transaction ${transaction.id}, ` +
+    `${transaction.amountMinor} minor units on ${transaction.occurredOn}, ${memo}`
+  )
+}
+
+function formatAdjustmentTransaction(transaction: AdjustmentTransaction): string {
+  const memo = transaction.memo === null ? 'no memo' : `memo "${transaction.memo}"`
+
+  return (
+    `Adjustment Transaction ${transaction.id} for ` +
+    `${formatNature(transaction.account.nature)} Account "${transaction.account.name}" ` +
+    `(ID ${transaction.account.id}, ${transaction.account.currency}), ` +
     `${transaction.amountMinor} minor units on ${transaction.occurredOn}, ${memo}`
   )
 }

@@ -19,6 +19,12 @@ export {
   updateAccount,
 } from './accounts.js'
 export type {
+  AdjustmentRequest,
+  AdjustmentTransaction,
+  RecordAdjustmentResult,
+} from './adjustments.js'
+export { recordAdjustment } from './adjustments.js'
+export type {
   Category,
   CategoryCreation,
   CategoryMutation,

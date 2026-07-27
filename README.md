@@ -44,7 +44,8 @@ hierarchies with complete current paths. Every tool accepts a local Vault folder
 responses report the material values that were actually applied. Transaction tools record, list,
 and inspect Income and Expense with immediate Account balance results. Classification tools split
 Transactions across explicit or inferred Category Assignments and report signed uncategorized
-remainders.
+remainders. Adjustment tools apply signed balance deltas or calculate them from requested target
+balances without recording Income or Expense.
 
 ## Design
 

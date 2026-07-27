@@ -57,6 +57,18 @@ const categoryAssignmentSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
 })
 
+const adjustmentTransactionSchema = z.object({
+  id: z.number().int().positive(),
+  kind: z.literal('adjustment'),
+  occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  account: transactionAccountSchema,
+  amountMinor: z
+    .number()
+    .int()
+    .refine((amount) => amount !== 0),
+  memo: z.string().min(1).nullable(),
+})
+
 export const initializeVaultInputSchema = {
   path: z.string().min(1).describe('Local folder to initialize as a Vault'),
 }
@@ -257,4 +269,34 @@ export const getTransactionClassificationOutputSchema = {
   transaction: incomeExpenseTransactionSchema,
   assignments: z.array(categoryAssignmentSchema),
   uncategorizedAmountMinor: z.number().int(),
+}
+
+export const recordAdjustmentInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  accountId: z.number().int().positive().describe('Active Account ID'),
+  occurredOn: z.string().describe('Calendar date in YYYY-MM-DD format'),
+  amountMinor: z
+    .number()
+    .int()
+    .refine((amount) => amount !== 0)
+    .optional()
+    .describe('Signed balance delta; mutually exclusive with targetBalanceMinor'),
+  targetBalanceMinor: z
+    .number()
+    .int()
+    .optional()
+    .describe('Requested resulting balance; mutually exclusive with amountMinor'),
+  memo: z.string().nullable().optional().describe('Optional concise memo'),
+}
+
+export const recordAdjustmentOutputSchema = {
+  action: z.literal('created'),
+  transaction: adjustmentTransactionSchema,
+  previousBalanceMinor: z.number().int(),
+  adjustmentAmountMinor: z
+    .number()
+    .int()
+    .refine((amount) => amount !== 0),
+  resultingBalanceMinor: z.number().int(),
+  requestedTargetBalanceMinor: z.number().int().nullable(),
 }

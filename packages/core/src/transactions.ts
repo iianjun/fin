@@ -168,7 +168,7 @@ function validatePositiveAmount(amountMinor: number): number {
   return amountMinor
 }
 
-function validateCalendarDate(occurredOn: string): string {
+export function validateCalendarDate(occurredOn: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(occurredOn)) {
     throw new Error('Transaction date must use the YYYY-MM-DD calendar format')
   }
@@ -182,7 +182,7 @@ function validateCalendarDate(occurredOn: string): string {
   return occurredOn
 }
 
-function normalizeMemo(memo: string | null | undefined): string | null {
+export function normalizeMemo(memo: string | null | undefined): string | null {
   if (memo === null || memo === undefined) {
     return null
   }

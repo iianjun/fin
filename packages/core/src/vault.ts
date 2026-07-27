@@ -45,6 +45,15 @@ export function initializeVault(vaultPath: string): VaultState {
 }
 
 export function openVault(vaultPath: string): VaultState {
+  return withVaultDatabase(vaultPath, (database, path, databasePath) =>
+    readVaultState(database, path, databasePath),
+  )
+}
+
+export function withVaultDatabase<Result>(
+  vaultPath: string,
+  operation: (database: DatabaseSync, path: string, databasePath: string) => Result,
+): Result {
   const path = resolveVaultPath(vaultPath)
   const databasePath = resolve(path, databaseFileName)
 
@@ -61,7 +70,7 @@ export function openVault(vaultPath: string): VaultState {
 
     database.exec('PRAGMA foreign_keys = ON')
     applyPendingMigrations(database)
-    return readVaultState(database, path, databasePath)
+    return operation(database, path, databasePath)
   } finally {
     database.close()
   }

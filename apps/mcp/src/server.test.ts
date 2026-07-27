@@ -1,9 +1,9 @@
-import type { VaultState } from '@fin/core'
+import type { Account, VaultState } from '@fin/core'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createFinServer, type VaultOperations } from './server.js'
+import { createFinServer, type FinOperations } from './server.js'
 
 describe('fin MCP server', () => {
   let client: Client | undefined
@@ -85,6 +85,140 @@ describe('fin MCP server', () => {
     })
   })
 
+  it('creates an Account and confirms every applied value', async () => {
+    const creations: Array<{ path: string; name: string; nature: string; currency: string }> = []
+    const account = createAccount()
+    const connection = await connectTestClient({
+      createAccount: (path, creation) => {
+        creations.push({ path, ...creation })
+        return { action: 'created', account }
+      },
+    })
+    client = connection.client
+    server = connection.server
+
+    const result = await client.callTool({
+      name: 'create_account',
+      arguments: {
+        path: '/vaults/main',
+        name: 'Daily Cash',
+        nature: 'asset',
+        currency: 'KRW',
+      },
+    })
+
+    expect(creations).toEqual([
+      {
+        path: '/vaults/main',
+        name: 'Daily Cash',
+        nature: 'asset',
+        currency: 'KRW',
+      },
+    ])
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Created Asset Account "Daily Cash" (ID 7) in KRW with balance ' +
+          '0 minor units; archived: no.',
+      },
+    ])
+    expect(result.structuredContent).toEqual({ action: 'created', account })
+  })
+
+  it('lists Account nature, currency, archive state, and current balance', async () => {
+    const account = createAccount({ archived: true, balanceMinor: 12_500 })
+    const connection = await connectTestClient({
+      listAccounts: () => [account],
+    })
+    client = connection.client
+    server = connection.server
+
+    const result = await client.callTool({
+      name: 'list_accounts',
+      arguments: { path: '/vaults/main' },
+    })
+
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text: '7: "Daily Cash" — Asset, KRW, balance 12500 minor units, ' + 'archived: yes',
+      },
+    ])
+    expect(result.structuredContent).toEqual({ accounts: [account] })
+  })
+
+  it('selects or clears a default Account and confirms the resulting settings', async () => {
+    const account = createAccount()
+    const requests: Array<{ kind: string; accountId: number | null }> = []
+    const connection = await connectTestClient({
+      setDefaultAccount: (_path, kind, accountId) => {
+        requests.push({ kind, accountId })
+
+        return {
+          action: 'updated',
+          kind,
+          selectedAccount: accountId === null ? null : account,
+          settings: {
+            defaultIncomeAccountId: accountId,
+            defaultExpenseAccountId: null,
+          },
+        }
+      },
+    })
+    client = connection.client
+    server = connection.server
+
+    const selected = await client.callTool({
+      name: 'set_default_account',
+      arguments: { path: '/vaults/main', kind: 'income', accountId: account.id },
+    })
+    const cleared = await client.callTool({
+      name: 'set_default_account',
+      arguments: { path: '/vaults/main', kind: 'income', accountId: null },
+    })
+
+    expect(requests).toEqual([
+      { kind: 'income', accountId: account.id },
+      { kind: 'income', accountId: null },
+    ])
+    expect(selected.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Set default income Account to "Daily Cash" ' +
+          '(ID 7, Asset, KRW, archived: no). Defaults now: Income 7, Expense none.',
+      },
+    ])
+    expect(selected.structuredContent).toEqual({
+      action: 'updated',
+      kind: 'income',
+      selectedAccount: account,
+      settings: {
+        defaultIncomeAccountId: account.id,
+        defaultExpenseAccountId: null,
+      },
+    })
+    expect(cleared.content).toEqual([
+      {
+        type: 'text',
+        text: 'Cleared the default income Account. Defaults now: Income none, Expense none.',
+      },
+    ])
+  })
+
+  function createAccount(overrides: Partial<Account> = {}): Account {
+    return {
+      id: 7,
+      name: 'Daily Cash',
+      nature: 'asset',
+      currency: 'KRW',
+      archived: false,
+      balanceMinor: 0,
+      ...overrides,
+    }
+  }
+
   function createVaultState(
     path: string,
     counts: { accountCount: number; categoryCount: number } = {
@@ -105,7 +239,7 @@ describe('fin MCP server', () => {
   }
 
   async function connectTestClient(
-    operations: VaultOperations,
+    operations: Partial<FinOperations>,
   ): Promise<{ client: Client; server: McpServer }> {
     const server = createFinServer(operations)
     const client = new Client({ name: 'fin-test-client', version: '0.0.0' })

@@ -37,9 +37,10 @@ pnpm build
 node apps/mcp/dist/index.js
 ```
 
-The server exposes `initialize_vault` for creating a Vault and `open_vault` for reopening one.
-Each tool accepts a local folder path and returns the current schema version, settings, Account
-count, and Category count.
+The server exposes Vault lifecycle tools for initializing and opening a Vault, plus Account tools
+for creating and listing Accounts and selecting or clearing the default Income and Expense
+Accounts. Every tool accepts a local Vault folder path. Mutation responses report the material
+values that were actually applied.
 
 ## Design
 

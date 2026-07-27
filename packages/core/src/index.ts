@@ -62,5 +62,12 @@ export {
   listIncomeExpenseTransactions,
   recordIncomeExpense,
 } from './transactions.js'
+export type {
+  RecordTransferResult,
+  TransferEndpoint,
+  TransferRequest,
+  TransferTransaction,
+} from './transfers.js'
+export { recordTransfer } from './transfers.js'
 export type { VaultState } from './vault.js'
 export { initializeVault, openVault } from './vault.js'

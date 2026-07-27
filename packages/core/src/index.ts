@@ -33,5 +33,17 @@ export {
   reactivateCategory,
   updateCategory,
 } from './categories.js'
+export type {
+  IncomeExpenseCreation,
+  IncomeExpenseKind,
+  IncomeExpenseTransaction,
+  RecordIncomeExpenseResult,
+  TransactionAccount,
+} from './transactions.js'
+export {
+  getIncomeExpenseTransaction,
+  listIncomeExpenseTransactions,
+  recordIncomeExpense,
+} from './transactions.js'
 export type { VaultState } from './vault.js'
 export { initializeVault, openVault } from './vault.js'

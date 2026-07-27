@@ -41,7 +41,8 @@ The server exposes Vault lifecycle tools for initializing and opening a Vault, p
 for creating, updating, listing, archiving, and reactivating Accounts and selecting or clearing
 the default Income and Expense Accounts. Category tools create and maintain three-level
 hierarchies with complete current paths. Every tool accepts a local Vault folder path. Mutation
-responses report the material values that were actually applied.
+responses report the material values that were actually applied. Transaction tools record, list,
+and inspect Income and Expense with immediate Account balance results.
 
 ## Design
 

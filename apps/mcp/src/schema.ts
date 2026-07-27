@@ -23,6 +23,23 @@ const categorySchema = z.object({
   archived: z.boolean(),
 })
 
+const transactionAccountSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1),
+  nature: z.enum(['asset', 'liability']),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  archived: z.boolean(),
+})
+
+const incomeExpenseTransactionSchema = z.object({
+  id: z.number().int().positive(),
+  kind: z.enum(['income', 'expense']),
+  occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  account: transactionAccountSchema,
+  amountMinor: z.number().int().positive(),
+  memo: z.string().min(1).nullable(),
+})
+
 export const initializeVaultInputSchema = {
   path: z.string().min(1).describe('Local folder to initialize as a Vault'),
 }
@@ -154,4 +171,37 @@ export const categoryMutationOutputSchema = {
   mutation: z.enum(['details_updated', 'archived', 'reactivated']),
   previousCategory: categorySchema,
   category: categorySchema,
+}
+
+export const recordIncomeExpenseInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  kind: z.enum(['income', 'expense']).describe('Transaction kind'),
+  accountId: z.number().int().positive().describe('Active Account ID'),
+  amountMinor: z.number().int().positive().describe('Positive amount in currency minor units'),
+  occurredOn: z.string().describe('Calendar date in YYYY-MM-DD format'),
+  memo: z.string().nullable().optional().describe('Optional concise memo'),
+}
+
+export const recordIncomeExpenseOutputSchema = {
+  action: z.literal('created'),
+  transaction: incomeExpenseTransactionSchema,
+  previousBalanceMinor: z.number().int(),
+  resultingBalanceMinor: z.number().int(),
+}
+
+export const listIncomeExpenseTransactionsInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+}
+
+export const listIncomeExpenseTransactionsOutputSchema = {
+  transactions: z.array(incomeExpenseTransactionSchema),
+}
+
+export const getIncomeExpenseTransactionInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  transactionId: z.number().int().positive().describe('Income or Expense Transaction ID'),
+}
+
+export const getIncomeExpenseTransactionOutputSchema = {
+  transaction: incomeExpenseTransactionSchema,
 }

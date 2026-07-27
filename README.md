@@ -46,7 +46,10 @@ and inspect Income and Expense with immediate Account balance results. Classific
 Transactions across explicit or inferred Category Assignments and report signed uncategorized
 remainders. Adjustment tools apply signed balance deltas or calculate them from requested target
 balances without recording Income or Expense. Transfer tools move same-currency or cross-currency
-value between Accounts without creating false Income or Expense.
+value between Accounts without creating false Income or Expense. Related-expense tools record
+Refunds as negative Expenses, attach optional original-Expense links, record transfer fees as
+positive Expenses linked to Transfers, and expose related Transactions before a multi-Transaction
+change.
 
 ## Design
 

@@ -23,23 +23,31 @@ import {
   type IncomeExpenseCreation,
   type IncomeExpenseTransaction,
   initializeVault,
+  inspectTransactionRelations,
   listAccounts,
   listCategories,
   listIncomeExpenseTransactions,
   openVault,
   type RecordAdjustmentResult,
   type RecordIncomeExpenseResult,
+  type RecordRelatedExpenseResult,
   type RecordTransferResult,
+  type RefundRequest,
   reactivateAccount,
   reactivateCategory,
   recordAdjustment,
   recordIncomeExpense,
+  recordRefund,
   recordTransfer,
+  recordTransferFee,
   type SetCategoryAssignmentsResult,
   type SetDefaultAccountResult,
   setCategoryAssignments,
   setDefaultAccount,
   type TransactionClassification,
+  type TransactionRelationInspection,
+  type TransactionSnapshot,
+  type TransferFeeRequest,
   type TransferRequest,
   type TransferTransaction,
   updateAccount,
@@ -61,6 +69,8 @@ import {
   getTransactionClassificationInputSchema,
   getTransactionClassificationOutputSchema,
   initializeVaultInputSchema,
+  inspectTransactionRelationsInputSchema,
+  inspectTransactionRelationsOutputSchema,
   listAccountsInputSchema,
   listAccountsOutputSchema,
   listCategoriesInputSchema,
@@ -72,6 +82,9 @@ import {
   recordAdjustmentOutputSchema,
   recordIncomeExpenseInputSchema,
   recordIncomeExpenseOutputSchema,
+  recordRefundInputSchema,
+  recordRelatedExpenseOutputSchema,
+  recordTransferFeeInputSchema,
   recordTransferInputSchema,
   recordTransferOutputSchema,
   setCategoryAssignmentsInputSchema,
@@ -122,6 +135,10 @@ export type TransactionOperations = {
     vaultPath: string,
     transactionId: number,
   ) => IncomeExpenseTransaction
+  inspectTransactionRelations: (
+    vaultPath: string,
+    transactionId: number,
+  ) => TransactionRelationInspection
   getTransactionClassification: (
     vaultPath: string,
     transactionId: number,
@@ -132,7 +149,9 @@ export type TransactionOperations = {
     vaultPath: string,
     creation: IncomeExpenseCreation,
   ) => RecordIncomeExpenseResult
+  recordRefund: (vaultPath: string, request: RefundRequest) => RecordRelatedExpenseResult
   recordTransfer: (vaultPath: string, request: TransferRequest) => RecordTransferResult
+  recordTransferFee: (vaultPath: string, request: TransferFeeRequest) => RecordRelatedExpenseResult
   setCategoryAssignments: (
     vaultPath: string,
     transactionId: number,
@@ -153,6 +172,7 @@ const defaultOperations: FinOperations = {
   getIncomeExpenseTransaction,
   getTransactionClassification,
   initializeVault,
+  inspectTransactionRelations,
   listAccounts,
   listCategories,
   listIncomeExpenseTransactions,
@@ -161,7 +181,9 @@ const defaultOperations: FinOperations = {
   reactivateCategory,
   recordAdjustment,
   recordIncomeExpense,
+  recordRefund,
   recordTransfer,
+  recordTransferFee,
   setCategoryAssignments,
   setDefaultAccount,
   updateAccount,
@@ -457,6 +479,62 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       ),
   )
 
+  server.registerTool(
+    'record_refund',
+    {
+      title: 'Record Refund',
+      description:
+        'Record a Refund as a negative Expense, optionally related to its original positive Expense.',
+      inputSchema: recordRefundInputSchema,
+      outputSchema: recordRelatedExpenseOutputSchema,
+    },
+    ({ path, accountId, amountMinor, occurredOn, memo, originalExpenseId }) =>
+      createRecordRefundToolResult(
+        operations.recordRefund(path, {
+          accountId,
+          amountMinor,
+          occurredOn,
+          memo,
+          originalExpenseId,
+        }),
+      ),
+  )
+
+  server.registerTool(
+    'record_transfer_fee',
+    {
+      title: 'Record Transfer Fee',
+      description: 'Record a positive Expense related to an existing Transfer.',
+      inputSchema: recordTransferFeeInputSchema,
+      outputSchema: recordRelatedExpenseOutputSchema,
+    },
+    ({ path, accountId, amountMinor, occurredOn, memo, transferId }) =>
+      createRecordTransferFeeToolResult(
+        operations.recordTransferFee(path, {
+          accountId,
+          amountMinor,
+          occurredOn,
+          memo,
+          transferId,
+        }),
+      ),
+  )
+
+  server.registerTool(
+    'inspect_transaction_relations',
+    {
+      title: 'Inspect Transaction Relations',
+      description:
+        'Find related Refunds, original Expenses, Transfer fees, and Transfers before changing more than one Transaction.',
+      inputSchema: inspectTransactionRelationsInputSchema,
+      outputSchema: inspectTransactionRelationsOutputSchema,
+    },
+    ({ path, transactionId }) =>
+      createTransactionRelationInspectionToolResult(
+        operations.inspectTransactionRelations(path, transactionId),
+      ),
+  )
+
   return server
 }
 
@@ -676,6 +754,69 @@ function createRecordTransferToolResult(result: RecordTransferResult) {
   }
 }
 
+function createRecordRefundToolResult(result: RecordRelatedExpenseResult) {
+  const relation =
+    result.relation === null
+      ? 'The Refund is intentionally unlinked.'
+      : `Related to original Expense Transaction ${result.relation.targetTransactionId}.`
+
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          `Recorded Refund as ${formatIncomeExpenseTransaction(result.transaction)}. ` +
+          `${relation} Account balance changed from ${result.previousBalanceMinor} to ` +
+          `${result.resultingBalanceMinor} minor units.`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
+function createRecordTransferFeeToolResult(result: RecordRelatedExpenseResult) {
+  const transferId = result.relation?.targetTransactionId
+
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          `Recorded Transfer fee as ${formatIncomeExpenseTransaction(result.transaction)}. ` +
+          `Related to Transfer Transaction ${transferId}. ` +
+          `Account balance changed from ${result.previousBalanceMinor} to ` +
+          `${result.resultingBalanceMinor} minor units.`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
+function createTransactionRelationInspectionToolResult(result: TransactionRelationInspection) {
+  const related =
+    result.relatedTransactions.length === 0
+      ? 'No related Transactions.'
+      : result.relatedTransactions
+          .map(
+            ({ direction, relationKind, transaction }) =>
+              `${direction} ${relationKind}: ${formatTransactionSnapshot(transaction)}`,
+          )
+          .join('\n')
+  const confirmation = result.requiresConfirmationBeforeMultiTransactionChange
+    ? 'Explicit confirmation is required before changing multiple related Transactions.'
+    : 'No multi-Transaction confirmation is required.'
+
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: `${formatTransactionSnapshot(result.transaction)}\n${related}\n${confirmation}`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
 function formatAccount(account: Account): string {
   return (
     `${formatNature(account.nature)} Account "${account.name}" ` +
@@ -722,6 +863,21 @@ function formatTransferTransaction(transaction: TransferTransaction): string {
   )
 }
 
+function formatTransactionSnapshot(transaction: TransactionSnapshot): string {
+  const memo = transaction.memo === null ? 'no memo' : `memo "${transaction.memo}"`
+  const values =
+    transaction.kind === 'transfer'
+      ? `source Account ${transaction.sourceAccountId} sends ${transaction.sourceAmountMinor}; ` +
+        `destination Account ${transaction.destinationAccountId} receives ` +
+        `${transaction.destinationAmountMinor} minor units`
+      : `Account ${transaction.accountId}, ${transaction.amountMinor} minor units`
+
+  return (
+    `${capitalize(transaction.kind)} Transaction ${transaction.id}, ${values} ` +
+    `on ${transaction.occurredOn}, ${memo}`
+  )
+}
+
 function formatTransactionClassification(classification: TransactionClassification): string {
   const assignments =
     classification.assignments.length === 0
@@ -757,4 +913,8 @@ function formatNature(nature: Account['nature']): 'Asset' | 'Liability' {
 
 function formatTransactionKind(kind: IncomeExpenseTransaction['kind']): 'Income' | 'Expense' {
   return kind === 'income' ? 'Income' : 'Expense'
+}
+
+function capitalize(value: TransactionSnapshot['kind']): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
 }

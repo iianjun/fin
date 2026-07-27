@@ -83,6 +83,24 @@ const transferTransactionSchema = z.object({
   memo: z.string().min(1).nullable(),
 })
 
+const transactionSnapshotSchema = z.object({
+  id: z.number().int().positive(),
+  kind: z.enum(['income', 'expense', 'transfer', 'adjustment']),
+  occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  memo: z.string().min(1).nullable(),
+  accountId: z.number().int().positive().nullable(),
+  amountMinor: z.number().int().nullable(),
+  sourceAccountId: z.number().int().positive().nullable(),
+  sourceAmountMinor: z.number().int().positive().nullable(),
+  destinationAccountId: z.number().int().positive().nullable(),
+  destinationAmountMinor: z.number().int().positive().nullable(),
+})
+
+const appliedTransactionRelationSchema = z.object({
+  kind: z.enum(['refund_of', 'fee_for']),
+  targetTransactionId: z.number().int().positive(),
+})
+
 export const initializeVaultInputSchema = {
   path: z.string().min(1).describe('Local folder to initialize as a Vault'),
 }
@@ -336,4 +354,53 @@ export const recordTransferOutputSchema = {
   sourceResultingBalanceMinor: z.number().int(),
   destinationPreviousBalanceMinor: z.number().int(),
   destinationResultingBalanceMinor: z.number().int(),
+}
+
+export const recordRefundInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  accountId: z.number().int().positive().describe('Active Account receiving the Refund'),
+  amountMinor: z.number().int().positive().describe('Positive Refund magnitude in minor units'),
+  occurredOn: z.string().describe('Calendar date in YYYY-MM-DD format'),
+  memo: z.string().nullable().optional().describe('Optional concise memo'),
+  originalExpenseId: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .optional()
+    .describe('Optional positive original Expense Transaction ID'),
+}
+
+export const recordTransferFeeInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  accountId: z.number().int().positive().describe('Active Account charged the fee'),
+  amountMinor: z.number().int().positive().describe('Positive fee amount in minor units'),
+  occurredOn: z.string().describe('Calendar date in YYYY-MM-DD format'),
+  memo: z.string().nullable().optional().describe('Optional concise memo'),
+  transferId: z.number().int().positive().describe('Related Transfer Transaction ID'),
+}
+
+export const recordRelatedExpenseOutputSchema = {
+  action: z.literal('created'),
+  transaction: incomeExpenseTransactionSchema,
+  relation: appliedTransactionRelationSchema.nullable(),
+  previousBalanceMinor: z.number().int(),
+  resultingBalanceMinor: z.number().int(),
+}
+
+export const inspectTransactionRelationsInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  transactionId: z.number().int().positive().describe('Transaction ID to inspect'),
+}
+
+export const inspectTransactionRelationsOutputSchema = {
+  transaction: transactionSnapshotSchema,
+  relatedTransactions: z.array(
+    z.object({
+      relationKind: z.enum(['refund_of', 'fee_for']),
+      direction: z.enum(['incoming', 'outgoing']),
+      transaction: transactionSnapshotSchema,
+    }),
+  ),
+  requiresConfirmationBeforeMultiTransactionChange: z.boolean(),
 }

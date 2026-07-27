@@ -6,7 +6,10 @@ import type {
   CategoryAssignment,
   CategoryMutationResult,
   IncomeExpenseTransaction,
+  RecordRelatedExpenseResult,
   TransactionClassification,
+  TransactionRelationInspection,
+  TransactionSnapshot,
   TransferTransaction,
   VaultState,
 } from '@fin/core'
@@ -735,6 +738,174 @@ describe('fin MCP server', () => {
     expect(response.structuredContent).toEqual(result)
   })
 
+  it('records a linked Refund as a negative Expense and confirms the relation', async () => {
+    const requests: Array<{
+      accountId: number
+      amountMinor: number
+      occurredOn: string
+      memo: string | null | undefined
+      originalExpenseId: number | null | undefined
+    }> = []
+    const result: RecordRelatedExpenseResult = {
+      action: 'created',
+      transaction: createIncomeExpenseTransaction({
+        id: 31,
+        amountMinor: -8_000,
+        memo: 'returned item',
+      }),
+      relation: {
+        kind: 'refund_of',
+        targetTransactionId: 12,
+      },
+      previousBalanceMinor: 220_000,
+      resultingBalanceMinor: 228_000,
+    }
+    const connection = await connectTestClient({
+      recordRefund: (_path, request) => {
+        requests.push({
+          accountId: request.accountId,
+          amountMinor: request.amountMinor,
+          occurredOn: request.occurredOn,
+          memo: request.memo,
+          originalExpenseId: request.originalExpenseId,
+        })
+        return result
+      },
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'record_refund',
+      arguments: {
+        path: '/vaults/main',
+        accountId: 4,
+        amountMinor: 8_000,
+        occurredOn: '2026-07-28',
+        memo: 'returned item',
+        originalExpenseId: 12,
+      },
+    })
+
+    expect(requests).toEqual([
+      {
+        accountId: 4,
+        amountMinor: 8_000,
+        occurredOn: '2026-07-28',
+        memo: 'returned item',
+        originalExpenseId: 12,
+      },
+    ])
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Recorded Refund as Asset Account "Bank" (ID 4, KRW) — Expense Transaction 31, ' +
+          '-8000 minor units on 2026-07-27, memo "returned item". ' +
+          'Related to original Expense Transaction 12. ' +
+          'Account balance changed from 220000 to 228000 minor units.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
+  it('records a Transfer fee as a positive Expense related to its Transfer', async () => {
+    const result: RecordRelatedExpenseResult = {
+      action: 'created',
+      transaction: createIncomeExpenseTransaction({
+        id: 32,
+        amountMinor: 900,
+        memo: 'wire fee',
+      }),
+      relation: {
+        kind: 'fee_for',
+        targetTransactionId: 25,
+      },
+      previousBalanceMinor: 40_000,
+      resultingBalanceMinor: 39_100,
+    }
+    const connection = await connectTestClient({
+      recordTransferFee: () => result,
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'record_transfer_fee',
+      arguments: {
+        path: '/vaults/main',
+        accountId: 4,
+        amountMinor: 900,
+        occurredOn: '2026-07-28',
+        memo: 'wire fee',
+        transferId: 25,
+      },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Recorded Transfer fee as Asset Account "Bank" (ID 4, KRW) — ' +
+          'Expense Transaction 32, 900 minor units on 2026-07-27, memo "wire fee". ' +
+          'Related to Transfer Transaction 25. ' +
+          'Account balance changed from 40000 to 39100 minor units.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
+  it('inspects related Transactions and requires confirmation before multi-Transaction changes', async () => {
+    const inspection: TransactionRelationInspection = {
+      transaction: createTransactionSnapshot({
+        id: 25,
+        kind: 'transfer',
+        accountId: null,
+        amountMinor: null,
+        sourceAccountId: 3,
+        sourceAmountMinor: 10_000,
+        destinationAccountId: 4,
+        destinationAmountMinor: 135_000,
+        memo: 'exchange',
+      }),
+      relatedTransactions: [
+        {
+          relationKind: 'fee_for',
+          direction: 'incoming',
+          transaction: createTransactionSnapshot({
+            id: 32,
+            amountMinor: 900,
+            memo: 'wire fee',
+          }),
+        },
+      ],
+      requiresConfirmationBeforeMultiTransactionChange: true,
+    }
+    const connection = await connectTestClient({
+      inspectTransactionRelations: () => inspection,
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'inspect_transaction_relations',
+      arguments: { path: '/vaults/main', transactionId: 25 },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Transfer Transaction 25, source Account 3 sends 10000; ' +
+          'destination Account 4 receives 135000 minor units on 2026-07-27, memo "exchange"\n' +
+          'incoming fee_for: Expense Transaction 32, Account 4, 900 minor units ' +
+          'on 2026-07-27, memo "wire fee"\n' +
+          'Explicit confirmation is required before changing multiple related Transactions.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(inspection)
+  })
+
   function createAccount(overrides: Partial<Account> = {}): Account {
     return {
       id: 7,
@@ -869,6 +1040,24 @@ describe('fin MCP server', () => {
         amountMinor: 135_000,
       },
       memo: 'exchange',
+      ...overrides,
+    }
+  }
+
+  function createTransactionSnapshot(
+    overrides: Partial<TransactionSnapshot> = {},
+  ): TransactionSnapshot {
+    return {
+      id: 12,
+      kind: 'expense',
+      occurredOn: '2026-07-27',
+      memo: 'groceries',
+      accountId: 4,
+      amountMinor: 30_000,
+      sourceAccountId: null,
+      sourceAmountMinor: null,
+      destinationAccountId: null,
+      destinationAmountMinor: null,
       ...overrides,
     }
   }

@@ -1,9 +1,25 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
     environment: 'node',
+    exclude: [...configDefaults.exclude, '**/dist/**'],
     passWithNoTests: true,
-    projects: ['apps/*', 'packages/*'],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: '@fin/mcp',
+          root: 'apps/mcp',
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: '@fin/core',
+          root: 'packages/core',
+        },
+      },
+    ],
   },
 })

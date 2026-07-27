@@ -5,6 +5,7 @@ import {
   type AccountUpdate,
   type AdjustmentRequest,
   type AdjustmentTransaction,
+  type AppliedTransactionRelation,
   archiveAccount,
   archiveCategory,
   type Category,
@@ -18,6 +19,10 @@ import {
   createAccount,
   createCategory,
   type DefaultAccountKind,
+  type DeleteTransactionResult,
+  deleteTransaction,
+  type EditTransactionResult,
+  editTransaction,
   getIncomeExpenseTransaction,
   getTransactionClassification,
   type IncomeExpenseCreation,
@@ -27,11 +32,13 @@ import {
   listAccounts,
   listCategories,
   listIncomeExpenseTransactions,
+  listTransactionChangeRecords,
   openVault,
   type RecordAdjustmentResult,
   type RecordIncomeExpenseResult,
   type RecordRelatedExpenseResult,
   type RecordTransferResult,
+  type RecreateTransactionResult,
   type RefundRequest,
   reactivateAccount,
   reactivateCategory,
@@ -40,13 +47,18 @@ import {
   recordRefund,
   recordTransfer,
   recordTransferFee,
+  recreateTransaction,
   type SetCategoryAssignmentsResult,
   type SetDefaultAccountResult,
   setCategoryAssignments,
   setDefaultAccount,
+  type TransactionChangeRecord,
   type TransactionClassification,
+  type TransactionKind,
   type TransactionRelationInspection,
+  type TransactionReplacement,
   type TransactionSnapshot,
+  type TransactionState,
   type TransferFeeRequest,
   type TransferRequest,
   type TransferTransaction,
@@ -64,6 +76,10 @@ import {
   createAccountOutputSchema,
   createCategoryInputSchema,
   createCategoryOutputSchema,
+  deleteTransactionInputSchema,
+  deleteTransactionOutputSchema,
+  editTransactionInputSchema,
+  editTransactionOutputSchema,
   getIncomeExpenseTransactionInputSchema,
   getIncomeExpenseTransactionOutputSchema,
   getTransactionClassificationInputSchema,
@@ -77,6 +93,8 @@ import {
   listCategoriesOutputSchema,
   listIncomeExpenseTransactionsInputSchema,
   listIncomeExpenseTransactionsOutputSchema,
+  listTransactionChangeRecordsInputSchema,
+  listTransactionChangeRecordsOutputSchema,
   openVaultInputSchema,
   recordAdjustmentInputSchema,
   recordAdjustmentOutputSchema,
@@ -87,6 +105,8 @@ import {
   recordTransferFeeInputSchema,
   recordTransferInputSchema,
   recordTransferOutputSchema,
+  recreateTransactionInputSchema,
+  recreateTransactionOutputSchema,
   setCategoryAssignmentsInputSchema,
   setCategoryAssignmentsOutputSchema,
   setDefaultAccountInputSchema,
@@ -131,6 +151,8 @@ export type CategoryOperations = {
 }
 
 export type TransactionOperations = {
+  deleteTransaction: typeof deleteTransaction
+  editTransaction: typeof editTransaction
   getIncomeExpenseTransaction: (
     vaultPath: string,
     transactionId: number,
@@ -144,6 +166,7 @@ export type TransactionOperations = {
     transactionId: number,
   ) => TransactionClassification
   listIncomeExpenseTransactions: (vaultPath: string) => IncomeExpenseTransaction[]
+  listTransactionChangeRecords: typeof listTransactionChangeRecords
   recordAdjustment: (vaultPath: string, request: AdjustmentRequest) => RecordAdjustmentResult
   recordIncomeExpense: (
     vaultPath: string,
@@ -152,6 +175,7 @@ export type TransactionOperations = {
   recordRefund: (vaultPath: string, request: RefundRequest) => RecordRelatedExpenseResult
   recordTransfer: (vaultPath: string, request: TransferRequest) => RecordTransferResult
   recordTransferFee: (vaultPath: string, request: TransferFeeRequest) => RecordRelatedExpenseResult
+  recreateTransaction: typeof recreateTransaction
   setCategoryAssignments: (
     vaultPath: string,
     transactionId: number,
@@ -169,6 +193,8 @@ const defaultOperations: FinOperations = {
   archiveCategory,
   createAccount,
   createCategory,
+  deleteTransaction,
+  editTransaction,
   getIncomeExpenseTransaction,
   getTransactionClassification,
   initializeVault,
@@ -176,6 +202,7 @@ const defaultOperations: FinOperations = {
   listAccounts,
   listCategories,
   listIncomeExpenseTransactions,
+  listTransactionChangeRecords,
   openVault,
   reactivateAccount,
   reactivateCategory,
@@ -184,6 +211,7 @@ const defaultOperations: FinOperations = {
   recordRefund,
   recordTransfer,
   recordTransferFee,
+  recreateTransaction,
   setCategoryAssignments,
   setDefaultAccount,
   updateAccount,
@@ -535,6 +563,91 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       ),
   )
 
+  server.registerTool(
+    'edit_transaction',
+    {
+      title: 'Edit Transaction',
+      description:
+        'Replace the material values of one Transaction while preserving its identity and invariants.',
+      inputSchema: editTransactionInputSchema,
+      outputSchema: editTransactionOutputSchema,
+    },
+    ({
+      path,
+      transactionId,
+      kind,
+      occurredOn,
+      memo,
+      accountId,
+      amountMinor,
+      sourceAccountId,
+      sourceAmountMinor,
+      destinationAccountId,
+      destinationAmountMinor,
+      assignments,
+      relation,
+    }) =>
+      createEditTransactionToolResult(
+        operations.editTransaction(path, {
+          transactionId,
+          replacement: createTransactionReplacement({
+            kind,
+            occurredOn,
+            memo,
+            accountId,
+            amountMinor,
+            sourceAccountId,
+            sourceAmountMinor,
+            destinationAccountId,
+            destinationAmountMinor,
+            assignments,
+            relation,
+          }),
+        }),
+      ),
+  )
+
+  server.registerTool(
+    'delete_transaction',
+    {
+      title: 'Delete Transaction',
+      description: 'Delete one active Transaction after related Transactions have been inspected.',
+      inputSchema: deleteTransactionInputSchema,
+      outputSchema: deleteTransactionOutputSchema,
+    },
+    ({ path, transactionId }) =>
+      createDeleteTransactionToolResult(operations.deleteTransaction(path, transactionId)),
+  )
+
+  server.registerTool(
+    'list_transaction_change_records',
+    {
+      title: 'List Transaction Change Records',
+      description:
+        'List immutable structured Transaction history with complete natural-language descriptions.',
+      inputSchema: listTransactionChangeRecordsInputSchema,
+      outputSchema: listTransactionChangeRecordsOutputSchema,
+    },
+    ({ path, transactionId }) =>
+      createListTransactionChangeRecordsToolResult(
+        operations.listTransactionChangeRecords(path, transactionId),
+      ),
+  )
+
+  server.registerTool(
+    'recreate_transaction',
+    {
+      title: 'Recreate Transaction',
+      description: 'Create a new Transaction identity from a deleted Transaction Change Record.',
+      inputSchema: recreateTransactionInputSchema,
+      outputSchema: recreateTransactionOutputSchema,
+    },
+    ({ path, deletionChangeRecordId }) =>
+      createRecreateTransactionToolResult(
+        operations.recreateTransaction(path, deletionChangeRecordId),
+      ),
+  )
+
   return server
 }
 
@@ -815,6 +928,209 @@ function createTransactionRelationInspectionToolResult(result: TransactionRelati
     ],
     structuredContent: result,
   }
+}
+
+type TransactionReplacementToolInput = {
+  kind: TransactionKind
+  occurredOn: string
+  memo: string | null | undefined
+  accountId: number | undefined
+  amountMinor: number | undefined
+  sourceAccountId: number | undefined
+  sourceAmountMinor: number | undefined
+  destinationAccountId: number | undefined
+  destinationAmountMinor: number | undefined
+  assignments: CategoryAssignmentInput[] | undefined
+  relation: AppliedTransactionRelation | null | undefined
+}
+
+function createTransactionReplacement(
+  input: TransactionReplacementToolInput,
+): TransactionReplacement {
+  if (input.kind === 'transfer') {
+    return {
+      kind: 'transfer',
+      sourceAccountId: requireToolNumber(input.sourceAccountId, 'sourceAccountId'),
+      sourceAmountMinor: requireToolNumber(input.sourceAmountMinor, 'sourceAmountMinor'),
+      destinationAccountId: requireToolNumber(input.destinationAccountId, 'destinationAccountId'),
+      destinationAmountMinor: requireToolNumber(
+        input.destinationAmountMinor,
+        'destinationAmountMinor',
+      ),
+      occurredOn: input.occurredOn,
+      memo: input.memo,
+    }
+  }
+
+  const accountId = requireToolNumber(input.accountId, 'accountId')
+  const amountMinor = requireToolNumber(input.amountMinor, 'amountMinor')
+
+  if (input.kind === 'adjustment') {
+    return {
+      kind: 'adjustment',
+      accountId,
+      amountMinor,
+      occurredOn: input.occurredOn,
+      memo: input.memo,
+    }
+  }
+
+  return {
+    kind: input.kind,
+    accountId,
+    amountMinor,
+    occurredOn: input.occurredOn,
+    memo: input.memo,
+    assignments: input.assignments,
+    relation: input.relation,
+  }
+}
+
+function createEditTransactionToolResult(result: EditTransactionResult) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          `Edited ${formatLifecycleTransaction(result.previousTransaction)} to ` +
+          `${formatLifecycleTransaction(result.transaction)}. ` +
+          `${formatLifecycleBalances(result.balanceChanges)} ` +
+          `${formatRelatedTransactionNotice(
+            result.relatedTransactions.length,
+            result.requiresConfirmationBeforeMultiTransactionChange,
+          )}`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
+function createDeleteTransactionToolResult(result: DeleteTransactionResult) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          `Deleted ${formatLifecycleTransaction(result.transaction)}. ` +
+          `${formatLifecycleBalances(result.balanceChanges)} ` +
+          `${formatRelatedTransactionNotice(
+            result.relatedTransactions.length,
+            result.requiresConfirmationBeforeMultiTransactionChange,
+          )}`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
+function createListTransactionChangeRecordsToolResult(changeRecords: TransactionChangeRecord[]) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          changeRecords.length === 0
+            ? 'No Transaction Change Records found.'
+            : changeRecords
+                .map(
+                  (record) =>
+                    `Change Record ${record.id} at ${record.recordedAt}: ${record.description}`,
+                )
+                .join('\n'),
+      },
+    ],
+    structuredContent: { changeRecords },
+  }
+}
+
+function createRecreateTransactionToolResult(result: RecreateTransactionResult) {
+  const omitted =
+    result.omittedIncomingRelations.length === 0
+      ? 'No incoming relations were omitted.'
+      : `${result.omittedIncomingRelations.length} incoming relation(s) were not reattached ` +
+        'because related Transactions are never changed implicitly.'
+
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          `Recreated deleted Transaction ${result.deletedTransactionId} as ` +
+          `${formatLifecycleTransaction(result.transaction)} from Change Record ` +
+          `${result.recreatedFromChangeRecordId}. ` +
+          `${formatLifecycleBalances(result.balanceChanges)} ${omitted}`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
+function formatLifecycleTransaction(transaction: TransactionState): string {
+  const memo = transaction.memo === null ? 'no memo' : `memo "${transaction.memo}"`
+
+  if (transaction.kind === 'transfer') {
+    return (
+      `Transfer Transaction ${transaction.id} on ${transaction.occurredOn}, ${memo}: ` +
+      `source Account "${transaction.source.account.name}" ` +
+      `(ID ${transaction.source.account.id}) sends ${transaction.source.amountMinor} ` +
+      `${transaction.source.account.currency}; destination Account ` +
+      `"${transaction.destination.account.name}" ` +
+      `(ID ${transaction.destination.account.id}) receives ` +
+      `${transaction.destination.amountMinor} ${transaction.destination.account.currency}`
+    )
+  }
+
+  const assignments =
+    transaction.kind === 'adjustment'
+      ? ''
+      : transaction.assignments.length === 0
+        ? ', uncategorized'
+        : `, ${transaction.assignments
+            .map(
+              (assignment) =>
+                `${assignment.origin} Category "${assignment.categoryPath}" ` +
+                `${assignment.amountMinor} ${transaction.account.currency}`,
+            )
+            .join('; ')}`
+
+  return (
+    `${capitalize(transaction.kind)} Transaction ${transaction.id} on ` +
+    `${transaction.occurredOn}, ${memo}: Account "${transaction.account.name}" ` +
+    `(ID ${transaction.account.id}), ${transaction.amountMinor} ` +
+    `${transaction.account.currency}${assignments}`
+  )
+}
+
+function formatLifecycleBalances(changes: EditTransactionResult['balanceChanges']): string {
+  return changes
+    .map(
+      (change) =>
+        `Account ${change.accountId} ${change.currency} balance changed from ` +
+        `${change.previousBalanceMinor} to ${change.resultingBalanceMinor}.`,
+    )
+    .join(' ')
+}
+
+function formatRelatedTransactionNotice(
+  relatedTransactionCount: number,
+  requiresConfirmation: boolean,
+): string {
+  if (!requiresConfirmation) {
+    return 'No related Transactions were identified.'
+  }
+
+  return (
+    `${relatedTransactionCount} related Transaction(s) were identified; ` +
+    'explicit confirmation is required before changing more than this Transaction.'
+  )
+}
+
+function requireToolNumber(value: number | undefined, field: string): number {
+  if (value === undefined) {
+    throw new Error(`${field} is required for this Transaction kind`)
+  }
+
+  return value
 }
 
 function formatAccount(account: Account): string {

@@ -49,7 +49,9 @@ balances without recording Income or Expense. Transfer tools move same-currency 
 value between Accounts without creating false Income or Expense. Related-expense tools record
 Refunds as negative Expenses, attach optional original-Expense links, record transfer fees as
 positive Expenses linked to Transfers, and expose related Transactions before a multi-Transaction
-change.
+change. Transaction lifecycle tools edit every Transaction shape in place, hard-delete active
+Transactions, render immutable Change Records in natural language, and create a new Transaction
+identity from deletion history.
 
 ## Design
 

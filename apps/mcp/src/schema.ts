@@ -101,6 +101,71 @@ const appliedTransactionRelationSchema = z.object({
   targetTransactionId: z.number().int().positive(),
 })
 
+const transactionRelationReferenceSchema = z.object({
+  relationKind: z.enum(['refund_of', 'fee_for']),
+  direction: z.enum(['incoming', 'outgoing']),
+  relatedTransaction: z.object({
+    id: z.number().int().positive(),
+    kind: z.enum(['income', 'expense', 'transfer', 'adjustment']),
+    occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    memo: z.string().min(1).nullable(),
+  }),
+})
+
+const transactionCategoryAssignmentStateSchema = z.object({
+  categoryId: z.number().int().positive(),
+  categoryPath: z.string().min(1),
+  amountMinor: z
+    .number()
+    .int()
+    .refine((amount) => amount !== 0),
+  origin: z.enum(['explicit', 'inferred']),
+})
+
+const transactionStateSchema = z.discriminatedUnion('kind', [
+  z.object({
+    id: z.number().int().positive(),
+    kind: z.enum(['income', 'expense']),
+    occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    memo: z.string().min(1).nullable(),
+    account: transactionAccountSchema,
+    amountMinor: z
+      .number()
+      .int()
+      .refine((amount) => amount !== 0),
+    assignments: z.array(transactionCategoryAssignmentStateSchema),
+    relations: z.array(transactionRelationReferenceSchema),
+  }),
+  z.object({
+    id: z.number().int().positive(),
+    kind: z.literal('adjustment'),
+    occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    memo: z.string().min(1).nullable(),
+    account: transactionAccountSchema,
+    amountMinor: z
+      .number()
+      .int()
+      .refine((amount) => amount !== 0),
+    relations: z.array(transactionRelationReferenceSchema),
+  }),
+  z.object({
+    id: z.number().int().positive(),
+    kind: z.literal('transfer'),
+    occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    memo: z.string().min(1).nullable(),
+    source: transferEndpointSchema,
+    destination: transferEndpointSchema,
+    relations: z.array(transactionRelationReferenceSchema),
+  }),
+])
+
+const accountBalanceChangeSchema = z.object({
+  accountId: z.number().int().positive(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  previousBalanceMinor: z.number().int(),
+  resultingBalanceMinor: z.number().int(),
+})
+
 export const initializeVaultInputSchema = {
   path: z.string().min(1).describe('Local folder to initialize as a Vault'),
 }
@@ -403,4 +468,125 @@ export const inspectTransactionRelationsOutputSchema = {
     }),
   ),
   requiresConfirmationBeforeMultiTransactionChange: z.boolean(),
+}
+
+export const editTransactionInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  transactionId: z.number().int().positive().describe('Transaction ID to edit'),
+  kind: z
+    .enum(['income', 'expense', 'adjustment', 'transfer'])
+    .describe('Existing Transaction kind; edits cannot silently convert kinds'),
+  occurredOn: z.string().describe('Replacement calendar date in YYYY-MM-DD format'),
+  memo: z.string().nullable().optional().describe('Replacement memo; omit for no memo'),
+  accountId: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Required replacement Account for Income, Expense, or Adjustment'),
+  amountMinor: z
+    .number()
+    .int()
+    .refine((amount) => amount !== 0)
+    .optional()
+    .describe('Required replacement amount for Income, Expense, or Adjustment'),
+  sourceAccountId: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Required replacement source Account for a Transfer'),
+  sourceAmountMinor: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Required replacement source amount for a Transfer'),
+  destinationAccountId: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Required replacement destination Account for a Transfer'),
+  destinationAmountMinor: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Required replacement destination amount for a Transfer'),
+  assignments: z
+    .array(
+      z.object({
+        categoryId: z.number().int().positive(),
+        amountMinor: z
+          .number()
+          .int()
+          .refine((amount) => amount !== 0),
+        origin: z.enum(['explicit', 'inferred']),
+      }),
+    )
+    .optional()
+    .describe('Optional complete replacement assignments; omit to preserve current assignments'),
+  relation: appliedTransactionRelationSchema
+    .nullable()
+    .optional()
+    .describe('Optional outgoing relation replacement; null removes it, omit preserves it'),
+}
+
+export const editTransactionOutputSchema = {
+  action: z.literal('updated'),
+  previousTransaction: transactionStateSchema,
+  transaction: transactionStateSchema,
+  balanceChanges: z.array(accountBalanceChangeSchema),
+  relatedTransactions: z.array(transactionRelationReferenceSchema),
+  requiresConfirmationBeforeMultiTransactionChange: z.boolean(),
+}
+
+export const deleteTransactionInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  transactionId: z.number().int().positive().describe('Transaction ID to delete'),
+}
+
+export const deleteTransactionOutputSchema = {
+  action: z.literal('deleted'),
+  transaction: transactionStateSchema,
+  balanceChanges: z.array(accountBalanceChangeSchema),
+  relatedTransactions: z.array(transactionRelationReferenceSchema),
+  requiresConfirmationBeforeMultiTransactionChange: z.boolean(),
+}
+
+export const listTransactionChangeRecordsInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  transactionId: z.number().int().positive().optional().describe('Optional Transaction ID filter'),
+}
+
+export const listTransactionChangeRecordsOutputSchema = {
+  changeRecords: z.array(
+    z.object({
+      id: z.number().int().positive(),
+      transactionId: z.number().int().positive(),
+      action: z.enum(['created', 'updated', 'deleted']),
+      payload: z.record(z.string(), z.unknown()),
+      recordedAt: z.string().min(1),
+      description: z.string().min(1),
+    }),
+  ),
+}
+
+export const recreateTransactionInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  deletionChangeRecordId: z
+    .number()
+    .int()
+    .positive()
+    .describe('Deleted Transaction Change Record ID'),
+}
+
+export const recreateTransactionOutputSchema = {
+  action: z.literal('created'),
+  recreatedFromChangeRecordId: z.number().int().positive(),
+  deletedTransactionId: z.number().int().positive(),
+  transaction: transactionStateSchema,
+  balanceChanges: z.array(accountBalanceChangeSchema),
+  omittedIncomingRelations: z.array(transactionRelationReferenceSchema),
 }

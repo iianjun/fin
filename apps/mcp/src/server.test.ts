@@ -5,8 +5,13 @@ import type {
   Category,
   CategoryAssignment,
   CategoryMutationResult,
+  DeleteTransactionResult,
+  EditTransactionResult,
   IncomeExpenseTransaction,
+  IncomeExpenseTransactionState,
   RecordRelatedExpenseResult,
+  RecreateTransactionResult,
+  TransactionChangeRecord,
   TransactionClassification,
   TransactionRelationInspection,
   TransactionSnapshot,
@@ -906,6 +911,216 @@ describe('fin MCP server', () => {
     expect(response.structuredContent).toEqual(inspection)
   })
 
+  it('edits a Transaction through a complete replacement and reports related records', async () => {
+    const previousTransaction = createLifecycleTransaction()
+    const transaction = createLifecycleTransaction({
+      amountMinor: 25_000,
+      occurredOn: '2026-07-28',
+      memo: 'corrected groceries',
+    })
+    const result: EditTransactionResult = {
+      action: 'updated',
+      previousTransaction,
+      transaction,
+      balanceChanges: [
+        {
+          accountId: 4,
+          currency: 'KRW',
+          previousBalanceMinor: 220_000,
+          resultingBalanceMinor: 225_000,
+        },
+      ],
+      relatedTransactions: transaction.relations,
+      requiresConfirmationBeforeMultiTransactionChange: true,
+    }
+    const requests: unknown[] = []
+    const connection = await connectTestClient({
+      editTransaction: (_path, request) => {
+        requests.push(request)
+        return result
+      },
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'edit_transaction',
+      arguments: {
+        path: '/vaults/main',
+        transactionId: 12,
+        kind: 'expense',
+        accountId: 4,
+        amountMinor: 25_000,
+        occurredOn: '2026-07-28',
+        memo: 'corrected groceries',
+        assignments: [
+          {
+            categoryId: 8,
+            amountMinor: 20_000,
+            origin: 'inferred',
+          },
+        ],
+      },
+    })
+
+    expect(requests).toEqual([
+      {
+        transactionId: 12,
+        replacement: {
+          kind: 'expense',
+          accountId: 4,
+          amountMinor: 25_000,
+          occurredOn: '2026-07-28',
+          memo: 'corrected groceries',
+          assignments: [
+            {
+              categoryId: 8,
+              amountMinor: 20_000,
+              origin: 'inferred',
+            },
+          ],
+          relation: undefined,
+        },
+      },
+    ])
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Edited Expense Transaction 12 on 2026-07-27, memo "groceries": ' +
+          'Account "Bank" (ID 4), 30000 KRW, inferred Category "Living > Food" 20000 KRW ' +
+          'to Expense Transaction 12 on 2026-07-28, memo "corrected groceries": ' +
+          'Account "Bank" (ID 4), 25000 KRW, inferred Category "Living > Food" 20000 KRW. ' +
+          'Account 4 KRW balance changed from 220000 to 225000. ' +
+          '1 related Transaction(s) were identified; explicit confirmation is required ' +
+          'before changing more than this Transaction.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
+  it('deletes one Transaction without claiming related Transactions were changed', async () => {
+    const transaction = createLifecycleTransaction()
+    const result: DeleteTransactionResult = {
+      action: 'deleted',
+      transaction,
+      balanceChanges: [
+        {
+          accountId: 4,
+          currency: 'KRW',
+          previousBalanceMinor: 220_000,
+          resultingBalanceMinor: 250_000,
+        },
+      ],
+      relatedTransactions: transaction.relations,
+      requiresConfirmationBeforeMultiTransactionChange: true,
+    }
+    const connection = await connectTestClient({
+      deleteTransaction: () => result,
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'delete_transaction',
+      arguments: { path: '/vaults/main', transactionId: 12 },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Deleted Expense Transaction 12 on 2026-07-27, memo "groceries": ' +
+          'Account "Bank" (ID 4), 30000 KRW, inferred Category "Living > Food" 20000 KRW. ' +
+          'Account 4 KRW balance changed from 220000 to 250000. ' +
+          '1 related Transaction(s) were identified; explicit confirmation is required ' +
+          'before changing more than this Transaction.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
+  it('lists immutable Transaction Change Records using their natural-language descriptions', async () => {
+    const changeRecord: TransactionChangeRecord = {
+      id: 41,
+      transactionId: 12,
+      action: 'deleted',
+      payload: {
+        action: 'deleted',
+        transaction: createLifecycleTransaction(),
+      },
+      recordedAt: '2026-07-28T01:02:03.000Z',
+      description: 'Deleted Expense Transaction 12 on 2026-07-27: Account 4 "Bank", 30000 KRW.',
+    }
+    const connection = await connectTestClient({
+      listTransactionChangeRecords: () => [changeRecord],
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'list_transaction_change_records',
+      arguments: { path: '/vaults/main', transactionId: 12 },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Change Record 41 at 2026-07-28T01:02:03.000Z: ' +
+          'Deleted Expense Transaction 12 on 2026-07-27: ' +
+          'Account 4 "Bank", 30000 KRW.',
+      },
+    ])
+    expect(response.structuredContent).toEqual({ changeRecords: [changeRecord] })
+  })
+
+  it('recreates a deleted Transaction with a new identity and discloses omitted relations', async () => {
+    const omittedIncomingRelations = createLifecycleTransaction().relations
+    const result: RecreateTransactionResult = {
+      action: 'created',
+      recreatedFromChangeRecordId: 41,
+      deletedTransactionId: 12,
+      transaction: createLifecycleTransaction({
+        id: 40,
+        relations: [],
+      }),
+      balanceChanges: [
+        {
+          accountId: 4,
+          currency: 'KRW',
+          previousBalanceMinor: 250_000,
+          resultingBalanceMinor: 220_000,
+        },
+      ],
+      omittedIncomingRelations,
+    }
+    const connection = await connectTestClient({
+      recreateTransaction: () => result,
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'recreate_transaction',
+      arguments: { path: '/vaults/main', deletionChangeRecordId: 41 },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Recreated deleted Transaction 12 as Expense Transaction 40 on 2026-07-27, ' +
+          'memo "groceries": Account "Bank" (ID 4), 30000 KRW, ' +
+          'inferred Category "Living > Food" 20000 KRW from Change Record 41. ' +
+          'Account 4 KRW balance changed from 250000 to 220000. ' +
+          '1 incoming relation(s) were not reattached because related Transactions ' +
+          'are never changed implicitly.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
   function createAccount(overrides: Partial<Account> = {}): Account {
     return {
       id: 7,
@@ -1058,6 +1273,46 @@ describe('fin MCP server', () => {
       sourceAmountMinor: null,
       destinationAccountId: null,
       destinationAmountMinor: null,
+      ...overrides,
+    }
+  }
+
+  function createLifecycleTransaction(
+    overrides: Partial<IncomeExpenseTransactionState> = {},
+  ): IncomeExpenseTransactionState {
+    return {
+      id: 12,
+      kind: 'expense',
+      occurredOn: '2026-07-27',
+      memo: 'groceries',
+      account: {
+        id: 4,
+        name: 'Bank',
+        nature: 'asset',
+        currency: 'KRW',
+        archived: false,
+      },
+      amountMinor: 30_000,
+      assignments: [
+        {
+          categoryId: 8,
+          categoryPath: 'Living > Food',
+          amountMinor: 20_000,
+          origin: 'inferred',
+        },
+      ],
+      relations: [
+        {
+          relationKind: 'refund_of',
+          direction: 'incoming',
+          relatedTransaction: {
+            id: 31,
+            kind: 'expense',
+            occurredOn: '2026-07-28',
+            memo: 'returned item',
+          },
+        },
+      ],
       ...overrides,
     }
   }

@@ -66,6 +66,32 @@ export {
   recordTransferFee,
 } from './related-expenses.js'
 export type {
+  AccountBalanceChange,
+  AdjustmentReplacement,
+  AdjustmentTransactionState,
+  DeleteTransactionResult,
+  EditTransactionRequest,
+  EditTransactionResult,
+  IncomeExpenseReplacement,
+  IncomeExpenseTransactionState,
+  RecreateTransactionResult,
+  RelatedTransactionReference,
+  TransactionCategoryAssignmentState,
+  TransactionChangeRecord,
+  TransactionKind,
+  TransactionRelationReference,
+  TransactionReplacement,
+  TransactionState,
+  TransferReplacement,
+  TransferTransactionState,
+} from './transaction-history.js'
+export {
+  deleteTransaction,
+  editTransaction,
+  listTransactionChangeRecords,
+  recreateTransaction,
+} from './transaction-history.js'
+export type {
   IncomeExpenseCreation,
   IncomeExpenseKind,
   IncomeExpenseTransaction,

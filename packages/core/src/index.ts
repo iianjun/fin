@@ -51,6 +51,29 @@ export {
   setCategoryAssignments,
 } from './classifications.js'
 export type {
+  AppliedSpendingFilters,
+  AppliedTransactionFilters,
+  BalanceQueryResult,
+  CategorySpendingRollup,
+  CurrencyAmount,
+  IncomeExpenseCurrencyTotal,
+  QueryAdjustmentTransaction,
+  QueryCategoryAssignment,
+  QueryIncomeExpenseTransaction,
+  QueryTransaction,
+  QueryTransactionRelation,
+  QueryTransferTransaction,
+  SpendingFilters,
+  SpendingQueryResult,
+  TransactionFilters,
+  TransactionQueryResult,
+} from './financial-queries.js'
+export {
+  queryBalances,
+  querySpending,
+  queryTransactions,
+} from './financial-queries.js'
+export type {
   AppliedTransactionRelation,
   RecordRelatedExpenseResult,
   RefundRequest,

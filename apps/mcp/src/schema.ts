@@ -166,6 +166,82 @@ const accountBalanceChangeSchema = z.object({
   resultingBalanceMinor: z.number().int(),
 })
 
+const currencyAmountSchema = z.object({
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  amountMinor: z.number().int(),
+})
+
+const queryTransactionRelationSchema = z.object({
+  relationKind: z.enum(['refund_of', 'fee_for']),
+  direction: z.enum(['incoming', 'outgoing']),
+  relatedTransactionId: z.number().int().positive(),
+})
+
+const queryCategoryAssignmentSchema = z.object({
+  categoryId: z.number().int().positive(),
+  categoryPath: z.string().min(1),
+  amountMinor: z
+    .number()
+    .int()
+    .refine((amount) => amount !== 0),
+  origin: z.enum(['explicit', 'inferred']),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+})
+
+const queryTransactionSchema = z.discriminatedUnion('kind', [
+  z.object({
+    id: z.number().int().positive(),
+    kind: z.enum(['income', 'expense']),
+    occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    memo: z.string().min(1).nullable(),
+    relations: z.array(queryTransactionRelationSchema),
+    account: transactionAccountSchema,
+    amountMinor: z
+      .number()
+      .int()
+      .refine((amount) => amount !== 0),
+    assignments: z.array(queryCategoryAssignmentSchema),
+    uncategorizedAmountMinor: z.number().int(),
+  }),
+  z.object({
+    id: z.number().int().positive(),
+    kind: z.literal('adjustment'),
+    occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    memo: z.string().min(1).nullable(),
+    relations: z.array(queryTransactionRelationSchema),
+    account: transactionAccountSchema,
+    amountMinor: z
+      .number()
+      .int()
+      .refine((amount) => amount !== 0),
+  }),
+  z.object({
+    id: z.number().int().positive(),
+    kind: z.literal('transfer'),
+    occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    memo: z.string().min(1).nullable(),
+    relations: z.array(queryTransactionRelationSchema),
+    source: transferEndpointSchema,
+    destination: transferEndpointSchema,
+  }),
+])
+
+const appliedTransactionFiltersSchema = z.object({
+  dateFrom: z.string().nullable(),
+  dateTo: z.string().nullable(),
+  accountId: z.number().int().positive().nullable(),
+  kinds: z.array(z.enum(['income', 'expense', 'transfer', 'adjustment'])),
+  memoContains: z.string().min(1).nullable(),
+})
+
+const incomeExpenseCurrencyTotalSchema = z.object({
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  incomeMinor: z.number().int(),
+  expenseMinor: z.number().int(),
+  netIncomeMinor: z.number().int(),
+  transactionIds: z.array(z.number().int().positive()),
+})
+
 export const initializeVaultInputSchema = {
   path: z.string().min(1).describe('Local folder to initialize as a Vault'),
 }
@@ -589,4 +665,72 @@ export const recreateTransactionOutputSchema = {
   transaction: transactionStateSchema,
   balanceChanges: z.array(accountBalanceChangeSchema),
   omittedIncomingRelations: z.array(transactionRelationReferenceSchema),
+}
+
+export const queryBalancesInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+}
+
+export const queryBalancesOutputSchema = {
+  accounts: z.array(accountSchema),
+  netWorthByCurrency: z.array(currencyAmountSchema),
+}
+
+export const queryTransactionsInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  dateFrom: z.string().optional().describe('Inclusive start date in YYYY-MM-DD format'),
+  dateTo: z.string().optional().describe('Inclusive end date in YYYY-MM-DD format'),
+  accountId: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Account used by a one-Account Transaction or either Transfer endpoint'),
+  kinds: z
+    .array(z.enum(['income', 'expense', 'transfer', 'adjustment']))
+    .optional()
+    .describe('Transaction kinds to include; omit or pass an empty array for every kind'),
+  memoContains: z.string().min(1).optional().describe('Case-insensitive literal memo substring'),
+}
+
+export const queryTransactionsOutputSchema = {
+  filters: appliedTransactionFiltersSchema,
+  transactions: z.array(queryTransactionSchema),
+  incomeExpenseTotalsByCurrency: z.array(incomeExpenseCurrencyTotalSchema),
+}
+
+export const querySpendingInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  dateFrom: z.string().optional().describe('Inclusive start date in YYYY-MM-DD format'),
+  dateTo: z.string().optional().describe('Inclusive end date in YYYY-MM-DD format'),
+  accountId: z.number().int().positive().optional().describe('Expense Account ID'),
+  memoContains: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Case-insensitive literal Expense memo substring'),
+  categoryId: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Current Category subtree root for spending rollups'),
+}
+
+export const querySpendingOutputSchema = {
+  filters: appliedTransactionFiltersSchema.omit({ kinds: true }).extend({
+    categoryId: z.number().int().positive().nullable(),
+  }),
+  transactions: z.array(queryTransactionSchema.options[0]),
+  expenseTotalsByCurrency: z.array(currencyAmountSchema),
+  uncategorizedByCurrency: z.array(currencyAmountSchema),
+  categoryRollups: z.array(
+    z.object({
+      categoryId: z.number().int().positive(),
+      categoryPath: z.string().min(1),
+      currency: z.string().regex(/^[A-Z]{3}$/),
+      amountMinor: z.number().int(),
+      transactionIds: z.array(z.number().int().positive()),
+    }),
+  ),
 }

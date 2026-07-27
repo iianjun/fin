@@ -1,6 +1,7 @@
 import type {
   Account,
   AccountMutationResult,
+  AdjustmentTransaction,
   Category,
   CategoryAssignment,
   CategoryMutationResult,
@@ -599,6 +600,70 @@ describe('fin MCP server', () => {
     expect(response.structuredContent).toEqual(classification)
   })
 
+  it('records a target-balance Adjustment with previous, delta, and resulting balances', async () => {
+    const transaction = createAdjustmentTransaction()
+    const requests: Array<{
+      accountId: number
+      occurredOn: string
+      amountMinor: number | undefined
+      targetBalanceMinor: number | undefined
+      memo: string | null | undefined
+    }> = []
+    const result = {
+      action: 'created' as const,
+      transaction,
+      previousBalanceMinor: -2_000,
+      adjustmentAmountMinor: 1_500,
+      resultingBalanceMinor: -500,
+      requestedTargetBalanceMinor: -500,
+    }
+    const connection = await connectTestClient({
+      recordAdjustment: (_path, request) => {
+        requests.push({
+          accountId: request.accountId,
+          occurredOn: request.occurredOn,
+          amountMinor: request.amountMinor,
+          targetBalanceMinor: request.targetBalanceMinor,
+          memo: request.memo,
+        })
+        return result
+      },
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'record_adjustment',
+      arguments: {
+        path: '/vaults/main',
+        accountId: 6,
+        occurredOn: '2026-07-27',
+        targetBalanceMinor: -500,
+        memo: 'reconcile',
+      },
+    })
+
+    expect(requests).toEqual([
+      {
+        accountId: 6,
+        occurredOn: '2026-07-27',
+        amountMinor: undefined,
+        targetBalanceMinor: -500,
+        memo: 'reconcile',
+      },
+    ])
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Adjustment Transaction 18 for Liability Account "Card" (ID 6, USD), ' +
+          '1500 minor units on 2026-07-27, memo "reconcile". ' +
+          'Requested target balance: -500 USD. Balance: -2000 + (1500) = -500 minor units.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
   function createAccount(overrides: Partial<Account> = {}): Account {
     return {
       id: 7,
@@ -681,6 +746,26 @@ describe('fin MCP server', () => {
       amountMinor: 20_000,
       origin: 'inferred',
       currency: 'KRW',
+      ...overrides,
+    }
+  }
+
+  function createAdjustmentTransaction(
+    overrides: Partial<AdjustmentTransaction> = {},
+  ): AdjustmentTransaction {
+    return {
+      id: 18,
+      kind: 'adjustment',
+      occurredOn: '2026-07-27',
+      account: {
+        id: 6,
+        name: 'Card',
+        nature: 'liability',
+        currency: 'USD',
+        archived: false,
+      },
+      amountMinor: 1_500,
+      memo: 'reconcile',
       ...overrides,
     }
   }

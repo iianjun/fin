@@ -1,4 +1,10 @@
-import type { Account, AccountMutationResult, VaultState } from '@fin/core'
+import type {
+  Account,
+  AccountMutationResult,
+  Category,
+  CategoryMutationResult,
+  VaultState,
+} from '@fin/core'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -301,6 +307,122 @@ describe('fin MCP server', () => {
     expect(reactivateResult.structuredContent).toEqual(reactivated)
   })
 
+  it('creates and lists Categories with their complete paths', async () => {
+    const category = createCategory()
+    const creations: Array<{ name: string; parentId: number | null | undefined }> = []
+    const connection = await connectTestClient({
+      createCategory: (_path, creation) => {
+        creations.push({ name: creation.name, parentId: creation.parentId })
+        return { action: 'created', category }
+      },
+      listCategories: () => [category],
+    })
+    client = connection.client
+    server = connection.server
+
+    const created = await client.callTool({
+      name: 'create_category',
+      arguments: {
+        path: '/vaults/main',
+        name: 'Dining',
+        parentId: 2,
+      },
+    })
+    const listed = await client.callTool({
+      name: 'list_categories',
+      arguments: { path: '/vaults/main' },
+    })
+
+    expect(creations).toEqual([{ name: 'Dining', parentId: 2 }])
+    expect(created.content).toEqual([
+      {
+        type: 'text',
+        text: 'Created Category "Living > Food > Dining" (depth 3, archived: no).',
+      },
+    ])
+    expect(created.structuredContent).toEqual({ action: 'created', category })
+    expect(listed.content).toEqual([
+      {
+        type: 'text',
+        text: '9: Category "Living > Food > Dining" (depth 3, archived: no)',
+      },
+    ])
+    expect(listed.structuredContent).toEqual({ categories: [category] })
+  })
+
+  it('renames or moves a Category and confirms its old and complete new path', async () => {
+    const previousCategory = createCategory()
+    const category = createCategory({
+      parentId: 5,
+      name: 'Restaurants',
+      path: 'Travel > Restaurants',
+      depth: 2,
+    })
+    const mutation = createCategoryMutation('details_updated', previousCategory, category)
+    const connection = await connectTestClient({
+      updateCategory: () => mutation,
+    })
+    client = connection.client
+    server = connection.server
+
+    const result = await client.callTool({
+      name: 'update_category',
+      arguments: {
+        path: '/vaults/main',
+        categoryId: category.id,
+        name: category.name,
+        parentId: category.parentId,
+      },
+    })
+
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Updated Category 9 from "Living > Food > Dining" to ' +
+          'Category "Travel > Restaurants" (depth 2, archived: no).',
+      },
+    ])
+    expect(result.structuredContent).toEqual(mutation)
+  })
+
+  it('archives and reactivates a Category with its complete path', async () => {
+    const activeCategory = createCategory()
+    const archivedCategory = createCategory({ archived: true })
+    const archived = createCategoryMutation('archived', activeCategory, archivedCategory)
+    const reactivated = createCategoryMutation('reactivated', archivedCategory, activeCategory)
+    const connection = await connectTestClient({
+      archiveCategory: () => archived,
+      reactivateCategory: () => reactivated,
+    })
+    client = connection.client
+    server = connection.server
+
+    const archiveResult = await client.callTool({
+      name: 'archive_category',
+      arguments: { path: '/vaults/main', categoryId: activeCategory.id },
+    })
+    const reactivateResult = await client.callTool({
+      name: 'reactivate_category',
+      arguments: { path: '/vaults/main', categoryId: activeCategory.id },
+    })
+
+    expect(archiveResult.content).toEqual([
+      {
+        type: 'text',
+        text: 'Archived Category "Living > Food > Dining" (depth 3, archived: yes).',
+      },
+    ])
+    expect(archiveResult.structuredContent).toEqual(archived)
+    expect(reactivateResult.content).toEqual([
+      {
+        type: 'text',
+        text: 'Reactivated Category "Living > Food > Dining" (depth 3, archived: no).',
+      },
+    ])
+    expect(reactivateResult.structuredContent).toEqual(reactivated)
+  })
+
   function createAccount(overrides: Partial<Account> = {}): Account {
     return {
       id: 7,
@@ -323,6 +445,31 @@ describe('fin MCP server', () => {
       mutation,
       previousAccount,
       account,
+    }
+  }
+
+  function createCategory(overrides: Partial<Category> = {}): Category {
+    return {
+      id: 9,
+      parentId: 2,
+      name: 'Dining',
+      depth: 3,
+      path: 'Living > Food > Dining',
+      archived: false,
+      ...overrides,
+    }
+  }
+
+  function createCategoryMutation(
+    mutation: CategoryMutationResult['mutation'],
+    previousCategory: Category,
+    category: Category,
+  ): CategoryMutationResult {
+    return {
+      action: 'updated',
+      mutation,
+      previousCategory,
+      category,
     }
   }
 

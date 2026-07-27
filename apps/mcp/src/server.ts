@@ -4,31 +4,48 @@ import {
   type AccountMutationResult,
   type AccountUpdate,
   archiveAccount,
+  archiveCategory,
+  type Category,
+  type CategoryCreation,
+  type CategoryMutationResult,
+  type CategoryUpdate,
   type CreateAccountResult,
+  type CreateCategoryResult,
   createAccount,
+  createCategory,
   type DefaultAccountKind,
   initializeVault,
   listAccounts,
+  listCategories,
   openVault,
   reactivateAccount,
+  reactivateCategory,
   type SetDefaultAccountResult,
   setDefaultAccount,
   updateAccount,
+  updateCategory,
   type VaultState,
 } from '@fin/core'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import {
   accountIdInputSchema,
   accountMutationOutputSchema,
+  categoryIdInputSchema,
+  categoryMutationOutputSchema,
   createAccountInputSchema,
   createAccountOutputSchema,
+  createCategoryInputSchema,
+  createCategoryOutputSchema,
   initializeVaultInputSchema,
   listAccountsInputSchema,
   listAccountsOutputSchema,
+  listCategoriesInputSchema,
+  listCategoriesOutputSchema,
   openVaultInputSchema,
   setDefaultAccountInputSchema,
   setDefaultAccountOutputSchema,
   updateAccountInputSchema,
+  updateCategoryInputSchema,
   vaultStateOutputSchema,
 } from './schema.js'
 
@@ -54,17 +71,34 @@ export type AccountOperations = {
   ) => AccountMutationResult
 }
 
-export type FinOperations = VaultOperations & AccountOperations
+export type CategoryOperations = {
+  archiveCategory: (vaultPath: string, categoryId: number) => CategoryMutationResult
+  createCategory: (vaultPath: string, creation: CategoryCreation) => CreateCategoryResult
+  listCategories: (vaultPath: string) => Category[]
+  reactivateCategory: (vaultPath: string, categoryId: number) => CategoryMutationResult
+  updateCategory: (
+    vaultPath: string,
+    categoryId: number,
+    update: CategoryUpdate,
+  ) => CategoryMutationResult
+}
+
+export type FinOperations = VaultOperations & AccountOperations & CategoryOperations
 
 const defaultOperations: FinOperations = {
   archiveAccount,
+  archiveCategory,
   createAccount,
+  createCategory,
   initializeVault,
   listAccounts,
+  listCategories,
   openVault,
   reactivateAccount,
+  reactivateCategory,
   setDefaultAccount,
   updateAccount,
+  updateCategory,
 }
 
 export function createFinServer(operationOverrides: Partial<FinOperations> = {}): McpServer {
@@ -170,6 +204,67 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       createAccountMutationToolResult(operations.reactivateAccount(path, accountId)),
   )
 
+  server.registerTool(
+    'create_category',
+    {
+      title: 'Create Category',
+      description: 'Create a root or child Category with a path of at most three levels.',
+      inputSchema: createCategoryInputSchema,
+      outputSchema: createCategoryOutputSchema,
+    },
+    ({ path, name, parentId }) =>
+      createCategoryToolResult(operations.createCategory(path, { name, parentId })),
+  )
+
+  server.registerTool(
+    'list_categories',
+    {
+      title: 'List Categories',
+      description: 'List Categories with complete current paths and archive state.',
+      inputSchema: listCategoriesInputSchema,
+      outputSchema: listCategoriesOutputSchema,
+    },
+    ({ path }) => createListCategoriesToolResult(operations.listCategories(path)),
+  )
+
+  server.registerTool(
+    'update_category',
+    {
+      title: 'Update Category',
+      description: 'Rename or move a Category while preserving a valid three-level hierarchy.',
+      inputSchema: updateCategoryInputSchema,
+      outputSchema: categoryMutationOutputSchema,
+    },
+    ({ path, categoryId, name, parentId }) =>
+      createCategoryMutationToolResult(
+        operations.updateCategory(path, categoryId, { name, parentId }),
+      ),
+  )
+
+  server.registerTool(
+    'archive_category',
+    {
+      title: 'Archive Category',
+      description: 'Archive a Category after its active children are archived.',
+      inputSchema: categoryIdInputSchema,
+      outputSchema: categoryMutationOutputSchema,
+    },
+    ({ path, categoryId }) =>
+      createCategoryMutationToolResult(operations.archiveCategory(path, categoryId)),
+  )
+
+  server.registerTool(
+    'reactivate_category',
+    {
+      title: 'Reactivate Category',
+      description: 'Reactivate a Category under an active parent.',
+      inputSchema: categoryIdInputSchema,
+      outputSchema: categoryMutationOutputSchema,
+    },
+    ({ path, categoryId }) =>
+      createCategoryMutationToolResult(operations.reactivateCategory(path, categoryId)),
+  )
+
   return server
 }
 
@@ -260,11 +355,61 @@ function createAccountMutationToolResult(result: AccountMutationResult) {
   }
 }
 
+function createCategoryToolResult(result: CreateCategoryResult) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: `Created ${formatCategory(result.category)}.`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
+function createListCategoriesToolResult(categories: Category[]) {
+  const text =
+    categories.length === 0
+      ? 'The Vault has no Categories.'
+      : categories.map((category) => `${category.id}: ${formatCategory(category)}`).join('\n')
+
+  return {
+    content: [{ type: 'text' as const, text }],
+    structuredContent: { categories },
+  }
+}
+
+function createCategoryMutationToolResult(result: CategoryMutationResult) {
+  let text: string
+
+  if (result.mutation === 'details_updated') {
+    text =
+      `Updated Category ${result.category.id} from "${result.previousCategory.path}" ` +
+      `to ${formatCategory(result.category)}.`
+  } else if (result.mutation === 'archived') {
+    text = `Archived ${formatCategory(result.category)}.`
+  } else {
+    text = `Reactivated ${formatCategory(result.category)}.`
+  }
+
+  return {
+    content: [{ type: 'text' as const, text }],
+    structuredContent: result,
+  }
+}
+
 function formatAccount(account: Account): string {
   return (
     `${formatNature(account.nature)} Account "${account.name}" ` +
     `(${account.currency}, balance ${account.balanceMinor} minor units, ` +
     `archived: ${account.archived ? 'yes' : 'no'})`
+  )
+}
+
+function formatCategory(category: Category): string {
+  return (
+    `Category "${category.path}" ` +
+    `(depth ${category.depth}, archived: ${category.archived ? 'yes' : 'no'})`
   )
 }
 

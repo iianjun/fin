@@ -14,6 +14,15 @@ const vaultSettingsSchema = z.object({
   defaultExpenseAccountId: z.number().int().positive().nullable(),
 })
 
+const categorySchema = z.object({
+  id: z.number().int().positive(),
+  parentId: z.number().int().positive().nullable(),
+  name: z.string().min(1),
+  depth: z.number().int().min(1).max(3),
+  path: z.string().min(1),
+  archived: z.boolean(),
+})
+
 export const initializeVaultInputSchema = {
   path: z.string().min(1).describe('Local folder to initialize as a Vault'),
 }
@@ -95,4 +104,54 @@ export const accountMutationOutputSchema = {
   mutation: z.enum(['details_updated', 'archived', 'reactivated']),
   previousAccount: accountSchema,
   account: accountSchema,
+}
+
+export const createCategoryInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  name: z.string().min(1).describe('Category name, unique among siblings'),
+  parentId: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .optional()
+    .describe('Parent Category ID, or null/omitted for a root Category'),
+}
+
+export const createCategoryOutputSchema = {
+  action: z.literal('created'),
+  category: categorySchema,
+}
+
+export const listCategoriesInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+}
+
+export const listCategoriesOutputSchema = {
+  categories: z.array(categorySchema),
+}
+
+export const updateCategoryInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  categoryId: z.number().int().positive().describe('Category ID to update'),
+  name: z.string().min(1).optional().describe('New sibling-unique Category name'),
+  parentId: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .optional()
+    .describe('New parent Category ID, or null to move to the root'),
+}
+
+export const categoryIdInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  categoryId: z.number().int().positive().describe('Category ID'),
+}
+
+export const categoryMutationOutputSchema = {
+  action: z.literal('updated'),
+  mutation: z.enum(['details_updated', 'archived', 'reactivated']),
+  previousCategory: categorySchema,
+  category: categorySchema,
 }

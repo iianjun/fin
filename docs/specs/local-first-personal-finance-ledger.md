@@ -282,9 +282,9 @@ Transaction.
   canonical source for product terminology, and the architecture decisions remain authoritative
   for module boundaries, per-Vault SQLite storage, and the separation of active data from Change
   Records.
-- The current executable schema and schema-level tests establish the persistence foundation. The
-  next implementation seam is a public core persistence API that performs domain mutations and
-  writes Change Records atomically; MCP tools should be built only after that core contract exists.
+- The executable schema and schema-level tests establish the persistence foundation. Public core
+  persistence operations perform domain mutations and write Change Records atomically; MCP tools
+  map that core contract without introducing protocol concepts into the core package.
 - “Recovery” of a deleted Transaction means creating a new Transaction from structured deletion
   history. It does not restore the deleted identity.
 - Natural-language confirmation is part of correctness. A successful mutation is not complete

@@ -69,3 +69,30 @@ export const setDefaultAccountOutputSchema = {
   selectedAccount: accountSchema.nullable(),
   settings: vaultSettingsSchema,
 }
+
+export const updateAccountInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  accountId: z.number().int().positive().describe('Account ID to update'),
+  name: z.string().min(1).optional().describe('New unique Account name'),
+  nature: z
+    .enum(['asset', 'liability'])
+    .optional()
+    .describe('New Account nature, allowed only before its first Transaction'),
+  currency: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('New three-letter currency code, allowed only before its first Transaction'),
+}
+
+export const accountIdInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  accountId: z.number().int().positive().describe('Account ID'),
+}
+
+export const accountMutationOutputSchema = {
+  action: z.literal('updated'),
+  mutation: z.enum(['details_updated', 'archived', 'reactivated']),
+  previousAccount: accountSchema,
+  account: accountSchema,
+}

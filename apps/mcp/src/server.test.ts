@@ -1,4 +1,4 @@
-import type { Account, VaultState } from '@fin/core'
+import type { Account, AccountMutationResult, VaultState } from '@fin/core'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -207,6 +207,100 @@ describe('fin MCP server', () => {
     ])
   })
 
+  it('updates an Account and confirms its previous and applied values', async () => {
+    const previousAccount = createAccount()
+    const account = createAccount({ name: 'Everyday', nature: 'liability', currency: 'USD' })
+    const updates: Array<{
+      accountId: number
+      name: string | undefined
+      nature: string | undefined
+      currency: string | undefined
+    }> = []
+    const mutation = createAccountMutation('details_updated', previousAccount, account)
+    const connection = await connectTestClient({
+      updateAccount: (_path, accountId, update) => {
+        updates.push({
+          accountId,
+          name: update.name,
+          nature: update.nature,
+          currency: update.currency,
+        })
+        return mutation
+      },
+    })
+    client = connection.client
+    server = connection.server
+
+    const result = await client.callTool({
+      name: 'update_account',
+      arguments: {
+        path: '/vaults/main',
+        accountId: account.id,
+        name: account.name,
+        nature: account.nature,
+        currency: account.currency,
+      },
+    })
+
+    expect(updates).toEqual([
+      {
+        accountId: account.id,
+        name: 'Everyday',
+        nature: 'liability',
+        currency: 'USD',
+      },
+    ])
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Updated Account 7 from Asset Account "Daily Cash" ' +
+          '(KRW, balance 0 minor units, archived: no) to Liability Account "Everyday" ' +
+          '(USD, balance 0 minor units, archived: no).',
+      },
+    ])
+    expect(result.structuredContent).toEqual(mutation)
+  })
+
+  it('archives and reactivates an Account with detailed receipts', async () => {
+    const activeAccount = createAccount()
+    const archivedAccount = createAccount({ archived: true })
+    const archived = createAccountMutation('archived', activeAccount, archivedAccount)
+    const reactivated = createAccountMutation('reactivated', archivedAccount, activeAccount)
+    const connection = await connectTestClient({
+      archiveAccount: () => archived,
+      reactivateAccount: () => reactivated,
+    })
+    client = connection.client
+    server = connection.server
+
+    const archiveResult = await client.callTool({
+      name: 'archive_account',
+      arguments: { path: '/vaults/main', accountId: activeAccount.id },
+    })
+    const reactivateResult = await client.callTool({
+      name: 'reactivate_account',
+      arguments: { path: '/vaults/main', accountId: activeAccount.id },
+    })
+
+    expect(archiveResult.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Archived Asset Account "Daily Cash" ' + '(KRW, balance 0 minor units, archived: yes).',
+      },
+    ])
+    expect(archiveResult.structuredContent).toEqual(archived)
+    expect(reactivateResult.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Reactivated Asset Account "Daily Cash" ' + '(KRW, balance 0 minor units, archived: no).',
+      },
+    ])
+    expect(reactivateResult.structuredContent).toEqual(reactivated)
+  })
+
   function createAccount(overrides: Partial<Account> = {}): Account {
     return {
       id: 7,
@@ -216,6 +310,19 @@ describe('fin MCP server', () => {
       archived: false,
       balanceMinor: 0,
       ...overrides,
+    }
+  }
+
+  function createAccountMutation(
+    mutation: AccountMutationResult['mutation'],
+    previousAccount: Account,
+    account: Account,
+  ): AccountMutationResult {
+    return {
+      action: 'updated',
+      mutation,
+      previousAccount,
+      account,
     }
   }
 

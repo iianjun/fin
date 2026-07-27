@@ -1,18 +1,25 @@
 import {
   type Account,
   type AccountCreation,
+  type AccountMutationResult,
+  type AccountUpdate,
+  archiveAccount,
   type CreateAccountResult,
   createAccount,
   type DefaultAccountKind,
   initializeVault,
   listAccounts,
   openVault,
+  reactivateAccount,
   type SetDefaultAccountResult,
   setDefaultAccount,
+  updateAccount,
   type VaultState,
 } from '@fin/core'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import {
+  accountIdInputSchema,
+  accountMutationOutputSchema,
   createAccountInputSchema,
   createAccountOutputSchema,
   initializeVaultInputSchema,
@@ -21,6 +28,7 @@ import {
   openVaultInputSchema,
   setDefaultAccountInputSchema,
   setDefaultAccountOutputSchema,
+  updateAccountInputSchema,
   vaultStateOutputSchema,
 } from './schema.js'
 
@@ -30,23 +38,33 @@ export type VaultOperations = {
 }
 
 export type AccountOperations = {
+  archiveAccount: (vaultPath: string, accountId: number) => AccountMutationResult
   createAccount: (vaultPath: string, creation: AccountCreation) => CreateAccountResult
   listAccounts: (vaultPath: string) => Account[]
+  reactivateAccount: (vaultPath: string, accountId: number) => AccountMutationResult
   setDefaultAccount: (
     vaultPath: string,
     kind: DefaultAccountKind,
     accountId: number | null,
   ) => SetDefaultAccountResult
+  updateAccount: (
+    vaultPath: string,
+    accountId: number,
+    update: AccountUpdate,
+  ) => AccountMutationResult
 }
 
 export type FinOperations = VaultOperations & AccountOperations
 
 const defaultOperations: FinOperations = {
+  archiveAccount,
   createAccount,
   initializeVault,
   listAccounts,
   openVault,
+  reactivateAccount,
   setDefaultAccount,
+  updateAccount,
 }
 
 export function createFinServer(operationOverrides: Partial<FinOperations> = {}): McpServer {
@@ -111,6 +129,45 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
     },
     ({ path, kind, accountId }) =>
       createDefaultAccountToolResult(operations.setDefaultAccount(path, kind, accountId)),
+  )
+
+  server.registerTool(
+    'update_account',
+    {
+      title: 'Update Account',
+      description:
+        'Rename an Account or change its nature and currency before its first Transaction.',
+      inputSchema: updateAccountInputSchema,
+      outputSchema: accountMutationOutputSchema,
+    },
+    ({ path, accountId, name, nature, currency }) =>
+      createAccountMutationToolResult(
+        operations.updateAccount(path, accountId, { name, nature, currency }),
+      ),
+  )
+
+  server.registerTool(
+    'archive_account',
+    {
+      title: 'Archive Account',
+      description: 'Archive a zero-balance Account that is not configured as a default.',
+      inputSchema: accountIdInputSchema,
+      outputSchema: accountMutationOutputSchema,
+    },
+    ({ path, accountId }) =>
+      createAccountMutationToolResult(operations.archiveAccount(path, accountId)),
+  )
+
+  server.registerTool(
+    'reactivate_account',
+    {
+      title: 'Reactivate Account',
+      description: 'Reactivate an archived Account.',
+      inputSchema: accountIdInputSchema,
+      outputSchema: accountMutationOutputSchema,
+    },
+    ({ path, accountId }) =>
+      createAccountMutationToolResult(operations.reactivateAccount(path, accountId)),
   )
 
   return server
@@ -182,6 +239,33 @@ function createDefaultAccountToolResult(result: SetDefaultAccountResult) {
     content: [{ type: 'text' as const, text: `${selection} ${defaults}` }],
     structuredContent: result,
   }
+}
+
+function createAccountMutationToolResult(result: AccountMutationResult) {
+  let text: string
+
+  if (result.mutation === 'details_updated') {
+    text =
+      `Updated Account ${result.account.id} from ${formatAccount(result.previousAccount)} ` +
+      `to ${formatAccount(result.account)}.`
+  } else if (result.mutation === 'archived') {
+    text = `Archived ${formatAccount(result.account)}.`
+  } else {
+    text = `Reactivated ${formatAccount(result.account)}.`
+  }
+
+  return {
+    content: [{ type: 'text' as const, text }],
+    structuredContent: result,
+  }
+}
+
+function formatAccount(account: Account): string {
+  return (
+    `${formatNature(account.nature)} Account "${account.name}" ` +
+    `(${account.currency}, balance ${account.balanceMinor} minor units, ` +
+    `archived: ${account.archived ? 'yes' : 'no'})`
+  )
 }
 
 function formatNature(nature: Account['nature']): 'Asset' | 'Liability' {

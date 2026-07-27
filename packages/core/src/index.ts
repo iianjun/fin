@@ -51,6 +51,21 @@ export {
   setCategoryAssignments,
 } from './classifications.js'
 export type {
+  AppliedTransactionRelation,
+  RecordRelatedExpenseResult,
+  RefundRequest,
+  RelatedTransaction,
+  TransactionRelationInspection,
+  TransactionRelationKind,
+  TransactionSnapshot,
+  TransferFeeRequest,
+} from './related-expenses.js'
+export {
+  inspectTransactionRelations,
+  recordRefund,
+  recordTransferFee,
+} from './related-expenses.js'
+export type {
   IncomeExpenseCreation,
   IncomeExpenseKind,
   IncomeExpenseTransaction,

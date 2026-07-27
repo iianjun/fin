@@ -45,7 +45,8 @@ responses report the material values that were actually applied. Transaction too
 and inspect Income and Expense with immediate Account balance results. Classification tools split
 Transactions across explicit or inferred Category Assignments and report signed uncategorized
 remainders. Adjustment tools apply signed balance deltas or calculate them from requested target
-balances without recording Income or Expense.
+balances without recording Income or Expense. Transfer tools move same-currency or cross-currency
+value between Accounts without creating false Income or Expense.
 
 ## Design
 

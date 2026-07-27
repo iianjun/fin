@@ -69,6 +69,20 @@ const adjustmentTransactionSchema = z.object({
   memo: z.string().min(1).nullable(),
 })
 
+const transferEndpointSchema = z.object({
+  account: transactionAccountSchema,
+  amountMinor: z.number().int().positive(),
+})
+
+const transferTransactionSchema = z.object({
+  id: z.number().int().positive(),
+  kind: z.literal('transfer'),
+  occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  source: transferEndpointSchema,
+  destination: transferEndpointSchema,
+  memo: z.string().min(1).nullable(),
+})
+
 export const initializeVaultInputSchema = {
   path: z.string().min(1).describe('Local folder to initialize as a Vault'),
 }
@@ -299,4 +313,27 @@ export const recordAdjustmentOutputSchema = {
     .refine((amount) => amount !== 0),
   resultingBalanceMinor: z.number().int(),
   requestedTargetBalanceMinor: z.number().int().nullable(),
+}
+
+export const recordTransferInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  sourceAccountId: z.number().int().positive().describe('Active source Account ID'),
+  sourceAmountMinor: z.number().int().positive().describe('Actual positive source amount'),
+  destinationAccountId: z.number().int().positive().describe('Active destination Account ID'),
+  destinationAmountMinor: z
+    .number()
+    .int()
+    .positive()
+    .describe('Actual positive destination amount'),
+  occurredOn: z.string().describe('Calendar date in YYYY-MM-DD format'),
+  memo: z.string().nullable().optional().describe('Optional concise memo'),
+}
+
+export const recordTransferOutputSchema = {
+  action: z.literal('created'),
+  transaction: transferTransactionSchema,
+  sourcePreviousBalanceMinor: z.number().int(),
+  sourceResultingBalanceMinor: z.number().int(),
+  destinationPreviousBalanceMinor: z.number().int(),
+  destinationResultingBalanceMinor: z.number().int(),
 }

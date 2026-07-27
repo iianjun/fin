@@ -29,15 +29,19 @@ import {
   openVault,
   type RecordAdjustmentResult,
   type RecordIncomeExpenseResult,
+  type RecordTransferResult,
   reactivateAccount,
   reactivateCategory,
   recordAdjustment,
   recordIncomeExpense,
+  recordTransfer,
   type SetCategoryAssignmentsResult,
   type SetDefaultAccountResult,
   setCategoryAssignments,
   setDefaultAccount,
   type TransactionClassification,
+  type TransferRequest,
+  type TransferTransaction,
   updateAccount,
   updateCategory,
   type VaultState,
@@ -68,6 +72,8 @@ import {
   recordAdjustmentOutputSchema,
   recordIncomeExpenseInputSchema,
   recordIncomeExpenseOutputSchema,
+  recordTransferInputSchema,
+  recordTransferOutputSchema,
   setCategoryAssignmentsInputSchema,
   setCategoryAssignmentsOutputSchema,
   setDefaultAccountInputSchema,
@@ -126,6 +132,7 @@ export type TransactionOperations = {
     vaultPath: string,
     creation: IncomeExpenseCreation,
   ) => RecordIncomeExpenseResult
+  recordTransfer: (vaultPath: string, request: TransferRequest) => RecordTransferResult
   setCategoryAssignments: (
     vaultPath: string,
     transactionId: number,
@@ -154,6 +161,7 @@ const defaultOperations: FinOperations = {
   reactivateCategory,
   recordAdjustment,
   recordIncomeExpense,
+  recordTransfer,
   setCategoryAssignments,
   setDefaultAccount,
   updateAccount,
@@ -419,6 +427,36 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       ),
   )
 
+  server.registerTool(
+    'record_transfer',
+    {
+      title: 'Record Transfer',
+      description:
+        'Move value between two active Accounts using actual source and destination amounts.',
+      inputSchema: recordTransferInputSchema,
+      outputSchema: recordTransferOutputSchema,
+    },
+    ({
+      path,
+      sourceAccountId,
+      sourceAmountMinor,
+      destinationAccountId,
+      destinationAmountMinor,
+      occurredOn,
+      memo,
+    }) =>
+      createRecordTransferToolResult(
+        operations.recordTransfer(path, {
+          sourceAccountId,
+          sourceAmountMinor,
+          destinationAccountId,
+          destinationAmountMinor,
+          occurredOn,
+          memo,
+        }),
+      ),
+  )
+
   return server
 }
 
@@ -621,6 +659,23 @@ function createRecordAdjustmentToolResult(result: RecordAdjustmentResult) {
   }
 }
 
+function createRecordTransferToolResult(result: RecordTransferResult) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          `${formatTransferTransaction(result.transaction)}. ` +
+          `Source balance: ${result.sourcePreviousBalanceMinor} to ` +
+          `${result.sourceResultingBalanceMinor}; destination balance: ` +
+          `${result.destinationPreviousBalanceMinor} to ` +
+          `${result.destinationResultingBalanceMinor} minor units.`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
 function formatAccount(account: Account): string {
   return (
     `${formatNature(account.nature)} Account "${account.name}" ` +
@@ -648,6 +703,22 @@ function formatAdjustmentTransaction(transaction: AdjustmentTransaction): string
     `${formatNature(transaction.account.nature)} Account "${transaction.account.name}" ` +
     `(ID ${transaction.account.id}, ${transaction.account.currency}), ` +
     `${transaction.amountMinor} minor units on ${transaction.occurredOn}, ${memo}`
+  )
+}
+
+function formatTransferTransaction(transaction: TransferTransaction): string {
+  const memo = transaction.memo === null ? 'no memo' : `memo "${transaction.memo}"`
+
+  return (
+    `Transfer Transaction ${transaction.id} on ${transaction.occurredOn}, ${memo}: ` +
+    `${formatNature(transaction.source.account.nature)} source Account ` +
+    `"${transaction.source.account.name}" (ID ${transaction.source.account.id}) sends ` +
+    `${transaction.source.amountMinor} ${transaction.source.account.currency} minor units; ` +
+    `${formatNature(transaction.destination.account.nature)} destination Account ` +
+    `"${transaction.destination.account.name}" ` +
+    `(ID ${transaction.destination.account.id}) receives ` +
+    `${transaction.destination.amountMinor} ` +
+    `${transaction.destination.account.currency} minor units`
   )
 }
 

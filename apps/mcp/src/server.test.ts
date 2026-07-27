@@ -7,6 +7,7 @@ import type {
   CategoryMutationResult,
   IncomeExpenseTransaction,
   TransactionClassification,
+  TransferTransaction,
   VaultState,
 } from '@fin/core'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -664,6 +665,76 @@ describe('fin MCP server', () => {
     expect(response.structuredContent).toEqual(result)
   })
 
+  it('records a Transfer with both Accounts, amounts, currencies, date, and balances', async () => {
+    const transaction = createTransferTransaction()
+    const requests: Array<{
+      sourceAccountId: number
+      sourceAmountMinor: number
+      destinationAccountId: number
+      destinationAmountMinor: number
+      occurredOn: string
+      memo: string | null | undefined
+    }> = []
+    const result = {
+      action: 'created' as const,
+      transaction,
+      sourcePreviousBalanceMinor: 50_000,
+      sourceResultingBalanceMinor: 40_000,
+      destinationPreviousBalanceMinor: 0,
+      destinationResultingBalanceMinor: 135_000,
+    }
+    const connection = await connectTestClient({
+      recordTransfer: (_path, request) => {
+        requests.push({
+          sourceAccountId: request.sourceAccountId,
+          sourceAmountMinor: request.sourceAmountMinor,
+          destinationAccountId: request.destinationAccountId,
+          destinationAmountMinor: request.destinationAmountMinor,
+          occurredOn: request.occurredOn,
+          memo: request.memo,
+        })
+        return result
+      },
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'record_transfer',
+      arguments: {
+        path: '/vaults/main',
+        sourceAccountId: 3,
+        sourceAmountMinor: 10_000,
+        destinationAccountId: 4,
+        destinationAmountMinor: 135_000,
+        occurredOn: '2026-07-27',
+        memo: 'exchange',
+      },
+    })
+
+    expect(requests).toEqual([
+      {
+        sourceAccountId: 3,
+        sourceAmountMinor: 10_000,
+        destinationAccountId: 4,
+        destinationAmountMinor: 135_000,
+        occurredOn: '2026-07-27',
+        memo: 'exchange',
+      },
+    ])
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Transfer Transaction 25 on 2026-07-27, memo "exchange": ' +
+          'Asset source Account "Dollars" (ID 3) sends 10000 USD minor units; ' +
+          'Asset destination Account "Won" (ID 4) receives 135000 KRW minor units. ' +
+          'Source balance: 50000 to 40000; destination balance: 0 to 135000 minor units.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
   function createAccount(overrides: Partial<Account> = {}): Account {
     return {
       id: 7,
@@ -766,6 +837,38 @@ describe('fin MCP server', () => {
       },
       amountMinor: 1_500,
       memo: 'reconcile',
+      ...overrides,
+    }
+  }
+
+  function createTransferTransaction(
+    overrides: Partial<TransferTransaction> = {},
+  ): TransferTransaction {
+    return {
+      id: 25,
+      kind: 'transfer',
+      occurredOn: '2026-07-27',
+      source: {
+        account: {
+          id: 3,
+          name: 'Dollars',
+          nature: 'asset',
+          currency: 'USD',
+          archived: false,
+        },
+        amountMinor: 10_000,
+      },
+      destination: {
+        account: {
+          id: 4,
+          name: 'Won',
+          nature: 'asset',
+          currency: 'KRW',
+          archived: false,
+        },
+        amountMinor: 135_000,
+      },
+      memo: 'exchange',
       ...overrides,
     }
   }

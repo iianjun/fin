@@ -30,3 +30,12 @@ pnpm build
 
 The repository currently contains the monorepo foundation only. MCP tools and product behavior
 will be implemented separately.
+
+## Design
+
+- [Product specification](docs/specs/local-first-personal-finance-ledger.md)
+- [Implementation tickets](docs/issues/)
+- [Product language](CONTEXT.md)
+- [Product behavior](docs/product-behavior.md)
+- [Database schema](docs/database-schema.md)
+- [Architecture decisions](docs/adr/index.md)

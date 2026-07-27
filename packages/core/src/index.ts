@@ -34,6 +34,17 @@ export {
   updateCategory,
 } from './categories.js'
 export type {
+  CategoryAssignment,
+  CategoryAssignmentInput,
+  CategoryAssignmentOrigin,
+  SetCategoryAssignmentsResult,
+  TransactionClassification,
+} from './classifications.js'
+export {
+  getTransactionClassification,
+  setCategoryAssignments,
+} from './classifications.js'
+export type {
   IncomeExpenseCreation,
   IncomeExpenseKind,
   IncomeExpenseTransaction,

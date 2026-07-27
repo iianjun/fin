@@ -4,6 +4,16 @@ Each vault owns one SQLite database as decided in
 [ADR 0002](adr/0002-store-each-vault-in-sqlite.md). The executable initial migration is
 [`packages/core/migrations/0001_initial.sql`](../packages/core/migrations/0001_initial.sql).
 
+## Migrations
+
+Migration files live in `packages/core/migrations/` and use a positive numeric version followed by
+a lowercase underscore-separated name, such as `0001_initial.sql`. They are applied in ascending
+numeric order.
+
+Each migration wraps its schema changes and its `schema_migrations` version insert in one
+transaction. The Vault lifecycle runner skips recorded versions and rejects a migration that does
+not record its own version before committing.
+
 ## Tables
 
 | Table | Purpose |

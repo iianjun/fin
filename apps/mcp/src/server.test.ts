@@ -2,6 +2,7 @@ import type {
   Account,
   AccountMutationResult,
   AdjustmentTransaction,
+  AgentTransactionResult,
   BalanceQueryResult,
   Category,
   CategoryAssignment,
@@ -1268,6 +1269,190 @@ describe('fin MCP server', () => {
           'Expense Transaction 12 on 2026-07-27, memo "coffee": ' +
           'Account "Bank" (ID 4), 30000 KRW; explicit Category "Living > Food" ' +
           '20000 KRW; uncategorized 10000 KRW; no relations',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
+  it('returns Agent-facing ambiguity candidates without claiming a mutation', async () => {
+    const result: AgentTransactionResult = {
+      status: 'needs_clarification',
+      reason: 'transaction_kind_ambiguity',
+      message:
+        'Income and Expense are both plausible; choose the Transaction kind before recording.',
+      candidates: {
+        transactionKinds: [
+          { kind: 'income', label: 'Income' },
+          { kind: 'expense', label: 'Expense' },
+        ],
+        accounts: [],
+        categories: [],
+      },
+      duplicateMatches: [],
+      proposedCategory: null,
+      receipt: null,
+    }
+    const connection = await connectTestClient({
+      recordAgentTransaction: () => result,
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'record_agent_transaction',
+      arguments: {
+        path: '/vaults/main',
+        amountMinor: 5_000,
+      },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Income and Expense are both plausible; choose the Transaction kind before recording.\n' +
+          'Transaction kind candidates: Income, Expense.\n' +
+          'No Vault mutation was applied.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
+  it('returns every likely duplicate material value before Agent mutation', async () => {
+    const result: AgentTransactionResult = {
+      status: 'confirmation_required',
+      reason: 'duplicate_confirmation',
+      message:
+        'A likely duplicate matches the applied date, Account, kind, amount, and memo; ' +
+        'confirm that this is a legitimate duplicate before recording it.',
+      candidates: {
+        transactionKinds: [],
+        accounts: [],
+        categories: [],
+      },
+      duplicateMatches: [
+        {
+          transactionId: 12,
+          kind: 'expense',
+          occurredOn: '2026-07-27',
+          account: {
+            id: 4,
+            name: 'Bank',
+            nature: 'asset',
+            currency: 'KRW',
+            archived: false,
+          },
+          amountMinor: 5_000,
+          memo: 'coffee',
+        },
+      ],
+      proposedCategory: null,
+      receipt: null,
+    }
+    const connection = await connectTestClient({
+      recordAgentTransaction: () => result,
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'record_agent_transaction',
+      arguments: {
+        path: '/vaults/main',
+        kind: 'expense',
+        accountId: 4,
+        amountMinor: 5_000,
+        occurredOn: '2026-07-27',
+        memo: 'coffee',
+      },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'A likely duplicate matches the applied date, Account, kind, amount, and memo; ' +
+          'confirm that this is a legitimate duplicate before recording it.\n' +
+          'Likely duplicates: Expense Transaction 12, Account "Bank" (ID 4), ' +
+          '5000 KRW on 2026-07-27, memo "coffee".\n' +
+          'No Vault mutation was applied.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
+  it('returns a detailed Agent mutation receipt with defaulted and inferred sources', async () => {
+    const transaction = createIncomeExpenseTransaction({
+      amountMinor: 5_000,
+      memo: null,
+    })
+    const categoryAssignment = createCategoryAssignment({
+      amountMinor: 5_000,
+      origin: 'inferred',
+    })
+    const result: AgentTransactionResult = {
+      status: 'recorded',
+      reason: null,
+      message:
+        'Recorded the Transaction with all applied, defaulted, and inferred values disclosed.',
+      candidates: {
+        transactionKinds: [],
+        accounts: [],
+        categories: [],
+      },
+      duplicateMatches: [],
+      proposedCategory: null,
+      receipt: {
+        transaction,
+        previousBalanceMinor: 20_000,
+        resultingBalanceMinor: 15_000,
+        categoryAssignment,
+        uncategorizedAmountMinor: 0,
+        createdCategory: null,
+        duplicateConfirmation: 'not_needed',
+        applied: {
+          kind: { value: 'expense', source: 'explicit' },
+          account: { value: transaction.account, source: 'default' },
+          amountMinor: { value: 5_000, source: 'explicit' },
+          occurredOn: { value: '2026-07-27', source: 'default' },
+          memo: { value: null, source: 'default_no_memo' },
+          category: {
+            value: { id: 8, path: 'Living > Food' },
+            source: 'inferred',
+          },
+          categoryAmountMinor: {
+            value: 5_000,
+            source: 'default_full_amount',
+          },
+        },
+      },
+    }
+    const connection = await connectTestClient({
+      recordAgentTransaction: () => result,
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'record_agent_transaction',
+      arguments: {
+        path: '/vaults/main',
+        kind: 'expense',
+        amountMinor: 5_000,
+        categoryQuery: 'Food',
+      },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Recorded Expense Transaction 12: Account "Bank" (ID 4, KRW, default); ' +
+          '5000 minor units (explicit); date 2026-07-27 (default); ' +
+          'no memo (default_no_memo); Category "Living > Food" (ID 8, inferred), ' +
+          'assigned 5000 minor units (default_full_amount); uncategorized 0 minor units. ' +
+          'Account balance changed from 20000 to 15000. ' +
+          'No likely duplicate required confirmation.',
       },
     ])
     expect(response.structuredContent).toEqual(result)

@@ -28,8 +28,18 @@ pnpm test
 pnpm build
 ```
 
-The repository currently contains the monorepo foundation only. MCP tools and product behavior
-will be implemented separately.
+## MCP server
+
+Build the workspace, then configure an MCP client to launch the stdio server:
+
+```sh
+pnpm build
+node apps/mcp/dist/index.js
+```
+
+The server exposes `initialize_vault` for creating a Vault and `open_vault` for reopening one.
+Each tool accepts a local folder path and returns the current schema version, settings, Account
+count, and Category count.
 
 ## Design
 

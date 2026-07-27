@@ -3,6 +3,7 @@ import type {
   AccountMutationResult,
   Category,
   CategoryMutationResult,
+  IncomeExpenseTransaction,
   VaultState,
 } from '@fin/core'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -423,6 +424,100 @@ describe('fin MCP server', () => {
     expect(reactivateResult.structuredContent).toEqual(reactivated)
   })
 
+  it('records Income or Expense and confirms every applied material value', async () => {
+    const transaction = createIncomeExpenseTransaction()
+    const creations: Array<{
+      kind: string
+      accountId: number
+      amountMinor: number
+      occurredOn: string
+      memo: string | null | undefined
+    }> = []
+    const connection = await connectTestClient({
+      recordIncomeExpense: (_path, creation) => {
+        creations.push({
+          kind: creation.kind,
+          accountId: creation.accountId,
+          amountMinor: creation.amountMinor,
+          occurredOn: creation.occurredOn,
+          memo: creation.memo,
+        })
+        return {
+          action: 'created',
+          transaction,
+          previousBalanceMinor: 250_000,
+          resultingBalanceMinor: 220_000,
+        }
+      },
+    })
+    client = connection.client
+    server = connection.server
+
+    const result = await client.callTool({
+      name: 'record_income_expense',
+      arguments: {
+        path: '/vaults/main',
+        kind: 'expense',
+        accountId: 4,
+        amountMinor: 30_000,
+        occurredOn: '2026-07-27',
+        memo: 'groceries',
+      },
+    })
+
+    expect(creations).toEqual([
+      {
+        kind: 'expense',
+        accountId: 4,
+        amountMinor: 30_000,
+        occurredOn: '2026-07-27',
+        memo: 'groceries',
+      },
+    ])
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Recorded Asset Account "Bank" (ID 4, KRW) — Expense Transaction 12, ' +
+          '30000 minor units on 2026-07-27, memo "groceries". ' +
+          'Account balance changed from 250000 to 220000 minor units.',
+      },
+    ])
+    expect(result.structuredContent).toEqual({
+      action: 'created',
+      transaction,
+      previousBalanceMinor: 250_000,
+      resultingBalanceMinor: 220_000,
+    })
+  })
+
+  it('lists and inspects Income and Expense Transactions with material values', async () => {
+    const transaction = createIncomeExpenseTransaction({ memo: null })
+    const connection = await connectTestClient({
+      listIncomeExpenseTransactions: () => [transaction],
+      getIncomeExpenseTransaction: () => transaction,
+    })
+    client = connection.client
+    server = connection.server
+
+    const listed = await client.callTool({
+      name: 'list_income_expense_transactions',
+      arguments: { path: '/vaults/main' },
+    })
+    const inspected = await client.callTool({
+      name: 'get_income_expense_transaction',
+      arguments: { path: '/vaults/main', transactionId: transaction.id },
+    })
+    const text =
+      'Asset Account "Bank" (ID 4, KRW) — Expense Transaction 12, ' +
+      '30000 minor units on 2026-07-27, no memo'
+
+    expect(listed.content).toEqual([{ type: 'text', text }])
+    expect(listed.structuredContent).toEqual({ transactions: [transaction] })
+    expect(inspected.content).toEqual([{ type: 'text', text }])
+    expect(inspected.structuredContent).toEqual({ transaction })
+  })
+
   function createAccount(overrides: Partial<Account> = {}): Account {
     return {
       id: 7,
@@ -470,6 +565,26 @@ describe('fin MCP server', () => {
       mutation,
       previousCategory,
       category,
+    }
+  }
+
+  function createIncomeExpenseTransaction(
+    overrides: Partial<IncomeExpenseTransaction> = {},
+  ): IncomeExpenseTransaction {
+    return {
+      id: 12,
+      kind: 'expense',
+      occurredOn: '2026-07-27',
+      account: {
+        id: 4,
+        name: 'Bank',
+        nature: 'asset',
+        currency: 'KRW',
+        archived: false,
+      },
+      amountMinor: 30_000,
+      memo: 'groceries',
+      ...overrides,
     }
   }
 

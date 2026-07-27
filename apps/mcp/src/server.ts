@@ -14,12 +14,18 @@ import {
   createAccount,
   createCategory,
   type DefaultAccountKind,
+  getIncomeExpenseTransaction,
+  type IncomeExpenseCreation,
+  type IncomeExpenseTransaction,
   initializeVault,
   listAccounts,
   listCategories,
+  listIncomeExpenseTransactions,
   openVault,
+  type RecordIncomeExpenseResult,
   reactivateAccount,
   reactivateCategory,
+  recordIncomeExpense,
   type SetDefaultAccountResult,
   setDefaultAccount,
   updateAccount,
@@ -36,12 +42,18 @@ import {
   createAccountOutputSchema,
   createCategoryInputSchema,
   createCategoryOutputSchema,
+  getIncomeExpenseTransactionInputSchema,
+  getIncomeExpenseTransactionOutputSchema,
   initializeVaultInputSchema,
   listAccountsInputSchema,
   listAccountsOutputSchema,
   listCategoriesInputSchema,
   listCategoriesOutputSchema,
+  listIncomeExpenseTransactionsInputSchema,
+  listIncomeExpenseTransactionsOutputSchema,
   openVaultInputSchema,
+  recordIncomeExpenseInputSchema,
+  recordIncomeExpenseOutputSchema,
   setDefaultAccountInputSchema,
   setDefaultAccountOutputSchema,
   updateAccountInputSchema,
@@ -83,19 +95,37 @@ export type CategoryOperations = {
   ) => CategoryMutationResult
 }
 
-export type FinOperations = VaultOperations & AccountOperations & CategoryOperations
+export type TransactionOperations = {
+  getIncomeExpenseTransaction: (
+    vaultPath: string,
+    transactionId: number,
+  ) => IncomeExpenseTransaction
+  listIncomeExpenseTransactions: (vaultPath: string) => IncomeExpenseTransaction[]
+  recordIncomeExpense: (
+    vaultPath: string,
+    creation: IncomeExpenseCreation,
+  ) => RecordIncomeExpenseResult
+}
+
+export type FinOperations = VaultOperations &
+  AccountOperations &
+  CategoryOperations &
+  TransactionOperations
 
 const defaultOperations: FinOperations = {
   archiveAccount,
   archiveCategory,
   createAccount,
   createCategory,
+  getIncomeExpenseTransaction,
   initializeVault,
   listAccounts,
   listCategories,
+  listIncomeExpenseTransactions,
   openVault,
   reactivateAccount,
   reactivateCategory,
+  recordIncomeExpense,
   setDefaultAccount,
   updateAccount,
   updateCategory,
@@ -265,6 +295,50 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       createCategoryMutationToolResult(operations.reactivateCategory(path, categoryId)),
   )
 
+  server.registerTool(
+    'record_income_expense',
+    {
+      title: 'Record Income or Expense',
+      description:
+        'Record positive Income or Expense against one active Account on a calendar date.',
+      inputSchema: recordIncomeExpenseInputSchema,
+      outputSchema: recordIncomeExpenseOutputSchema,
+    },
+    ({ path, kind, accountId, amountMinor, occurredOn, memo }) =>
+      createRecordIncomeExpenseToolResult(
+        operations.recordIncomeExpense(path, {
+          kind,
+          accountId,
+          amountMinor,
+          occurredOn,
+          memo,
+        }),
+      ),
+  )
+
+  server.registerTool(
+    'list_income_expense_transactions',
+    {
+      title: 'List Income and Expense Transactions',
+      description: 'List recorded Income and Expense Transactions with their material values.',
+      inputSchema: listIncomeExpenseTransactionsInputSchema,
+      outputSchema: listIncomeExpenseTransactionsOutputSchema,
+    },
+    ({ path }) => createListIncomeExpenseToolResult(operations.listIncomeExpenseTransactions(path)),
+  )
+
+  server.registerTool(
+    'get_income_expense_transaction',
+    {
+      title: 'Get Income or Expense Transaction',
+      description: 'Inspect one Income or Expense Transaction by ID.',
+      inputSchema: getIncomeExpenseTransactionInputSchema,
+      outputSchema: getIncomeExpenseTransactionOutputSchema,
+    },
+    ({ path, transactionId }) =>
+      createGetIncomeExpenseToolResult(operations.getIncomeExpenseTransaction(path, transactionId)),
+  )
+
   return server
 }
 
@@ -398,11 +472,56 @@ function createCategoryMutationToolResult(result: CategoryMutationResult) {
   }
 }
 
+function createRecordIncomeExpenseToolResult(result: RecordIncomeExpenseResult) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          `Recorded ${formatIncomeExpenseTransaction(result.transaction)}. ` +
+          `Account balance changed from ${result.previousBalanceMinor} to ` +
+          `${result.resultingBalanceMinor} minor units.`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
+function createListIncomeExpenseToolResult(transactions: IncomeExpenseTransaction[]) {
+  const text =
+    transactions.length === 0
+      ? 'The Vault has no Income or Expense Transactions.'
+      : transactions.map(formatIncomeExpenseTransaction).join('\n')
+
+  return {
+    content: [{ type: 'text' as const, text }],
+    structuredContent: { transactions },
+  }
+}
+
+function createGetIncomeExpenseToolResult(transaction: IncomeExpenseTransaction) {
+  return {
+    content: [{ type: 'text' as const, text: formatIncomeExpenseTransaction(transaction) }],
+    structuredContent: { transaction },
+  }
+}
+
 function formatAccount(account: Account): string {
   return (
     `${formatNature(account.nature)} Account "${account.name}" ` +
     `(${account.currency}, balance ${account.balanceMinor} minor units, ` +
     `archived: ${account.archived ? 'yes' : 'no'})`
+  )
+}
+
+function formatIncomeExpenseTransaction(transaction: IncomeExpenseTransaction): string {
+  const memo = transaction.memo === null ? 'no memo' : `memo "${transaction.memo}"`
+
+  return (
+    `${formatNature(transaction.account.nature)} Account "${transaction.account.name}" ` +
+    `(ID ${transaction.account.id}, ${transaction.account.currency}) — ` +
+    `${formatTransactionKind(transaction.kind)} Transaction ${transaction.id}, ` +
+    `${transaction.amountMinor} minor units on ${transaction.occurredOn}, ${memo}`
   )
 }
 
@@ -415,4 +534,8 @@ function formatCategory(category: Category): string {
 
 function formatNature(nature: Account['nature']): 'Asset' | 'Liability' {
   return nature === 'asset' ? 'Asset' : 'Liability'
+}
+
+function formatTransactionKind(kind: IncomeExpenseTransaction['kind']): 'Income' | 'Expense' {
+  return kind === 'income' ? 'Income' : 'Expense'
 }

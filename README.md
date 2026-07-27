@@ -53,7 +53,10 @@ change. Transaction lifecycle tools edit every Transaction shape in place, hard-
 Transactions, render immutable Change Records in natural language, and create a new Transaction
 identity from deletion history. Query tools report currency-separated balances and net worth,
 filter Transactions with evidence-backed Income and Expense totals, and aggregate Expense through
-current Category rollups, memo matches, and explicit uncategorized amounts.
+current Category rollups, memo matches, and explicit uncategorized amounts. The safe Agent
+operation applies local-date and default-Account values transparently, returns ambiguity candidates
+without mutation, requires confirmation for new Categories and likely duplicates, and identifies
+every explicit, defaulted, inferred, or confirmed value in its receipt.
 
 ## Design
 

@@ -25,6 +25,19 @@ export type {
 } from './adjustments.js'
 export { recordAdjustment } from './adjustments.js'
 export type {
+  AgentAppliedSource,
+  AgentAppliedValue,
+  AgentCandidateSet,
+  AgentDuplicateMatch,
+  AgentMutationReceipt,
+  AgentResolutionReason,
+  AgentResolutionStatus,
+  AgentTransactionIntent,
+  AgentTransactionKindCandidate,
+  AgentTransactionResult,
+} from './agent-operations.js'
+export { recordAgentTransaction } from './agent-operations.js'
+export type {
   Category,
   CategoryCreation,
   CategoryMutation,

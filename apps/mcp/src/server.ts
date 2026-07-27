@@ -5,6 +5,7 @@ import {
   type AccountUpdate,
   type AdjustmentRequest,
   type AdjustmentTransaction,
+  type AgentTransactionResult,
   type AppliedTransactionRelation,
   archiveAccount,
   archiveCategory,
@@ -48,6 +49,7 @@ import {
   reactivateAccount,
   reactivateCategory,
   recordAdjustment,
+  recordAgentTransaction,
   recordIncomeExpense,
   recordRefund,
   recordTransfer,
@@ -111,6 +113,8 @@ import {
   queryTransactionsOutputSchema,
   recordAdjustmentInputSchema,
   recordAdjustmentOutputSchema,
+  recordAgentTransactionInputSchema,
+  recordAgentTransactionOutputSchema,
   recordIncomeExpenseInputSchema,
   recordIncomeExpenseOutputSchema,
   recordRefundInputSchema,
@@ -202,11 +206,16 @@ export type QueryOperations = {
   queryTransactions: typeof queryTransactions
 }
 
+export type AgentOperations = {
+  recordAgentTransaction: typeof recordAgentTransaction
+}
+
 export type FinOperations = VaultOperations &
   AccountOperations &
   CategoryOperations &
   TransactionOperations &
-  QueryOperations
+  QueryOperations &
+  AgentOperations
 
 const defaultOperations: FinOperations = {
   archiveAccount,
@@ -230,6 +239,7 @@ const defaultOperations: FinOperations = {
   reactivateAccount,
   reactivateCategory,
   recordAdjustment,
+  recordAgentTransaction,
   recordIncomeExpense,
   recordRefund,
   recordTransfer,
@@ -721,6 +731,48 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
           accountId,
           memoContains,
           categoryId,
+        }),
+      ),
+  )
+
+  server.registerTool(
+    'record_agent_transaction',
+    {
+      title: 'Record Agent Transaction Safely',
+      description:
+        'Resolve defaults and unique matches, return candidates or confirmations without mutation when unsafe, and record detailed Income or Expense receipts.',
+      inputSchema: recordAgentTransactionInputSchema,
+      outputSchema: recordAgentTransactionOutputSchema,
+    },
+    ({
+      path,
+      kind,
+      accountId,
+      accountName,
+      amountMinor,
+      occurredOn,
+      memo,
+      categoryId,
+      categoryQuery,
+      categoryAmountMinor,
+      proposedCategory,
+      confirmNewCategory,
+      confirmDuplicate,
+    }) =>
+      createAgentTransactionToolResult(
+        operations.recordAgentTransaction(path, {
+          kind,
+          accountId,
+          accountName,
+          amountMinor,
+          occurredOn,
+          memo,
+          categoryId,
+          categoryQuery,
+          categoryAmountMinor,
+          proposedCategory,
+          confirmNewCategory,
+          confirmDuplicate,
         }),
       ),
   )
@@ -1222,6 +1274,97 @@ function createQuerySpendingToolResult(result: SpendingQueryResult) {
         text:
           `Matched ${result.transactions.length} Expense Transaction(s).\n` +
           `${expenseTotals}\n${uncategorized}\n${rollups}\n${evidence}`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
+function createAgentTransactionToolResult(result: AgentTransactionResult) {
+  if (result.receipt !== null) {
+    const { applied, transaction } = result.receipt
+    const category =
+      applied.category.value === null
+        ? `uncategorized (${applied.category.source})`
+        : `Category "${applied.category.value.path}" ` +
+          `(ID ${applied.category.value.id}, ${applied.category.source}), assigned ` +
+          `${String(applied.categoryAmountMinor.value)} minor units ` +
+          `(${applied.categoryAmountMinor.source})`
+    const duplicate =
+      result.receipt.duplicateConfirmation === 'confirmed'
+        ? `Confirmed legitimate duplicate after matching Transaction(s) ` +
+          `${result.duplicateMatches.map((match) => match.transactionId).join(', ')}.`
+        : 'No likely duplicate required confirmation.'
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text:
+            `Recorded ${capitalize(transaction.kind)} Transaction ${transaction.id}: ` +
+            `Account "${transaction.account.name}" (ID ${transaction.account.id}, ` +
+            `${transaction.account.currency}, ${applied.account.source}); ` +
+            `${transaction.amountMinor} minor units (${applied.amountMinor.source}); ` +
+            `date ${transaction.occurredOn} (${applied.occurredOn.source}); ` +
+            `${transaction.memo === null ? 'no memo' : `memo "${transaction.memo}"`} ` +
+            `(${applied.memo.source}); ${category}; uncategorized ` +
+            `${result.receipt.uncategorizedAmountMinor} minor units. ` +
+            `Account balance changed from ${result.receipt.previousBalanceMinor} to ` +
+            `${result.receipt.resultingBalanceMinor}. ${duplicate}`,
+        },
+      ],
+      structuredContent: result,
+    }
+  }
+
+  const kindCandidates =
+    result.candidates.transactionKinds.length === 0
+      ? ''
+      : `\nTransaction kind candidates: ${result.candidates.transactionKinds
+          .map((candidate) => candidate.label)
+          .join(', ')}.`
+  const accountCandidates =
+    result.candidates.accounts.length === 0
+      ? ''
+      : `\nAccount candidates: ${result.candidates.accounts
+          .map(
+            (account) =>
+              `"${account.name}" (ID ${account.id}, ${account.nature}, ` +
+              `${account.currency}, balance ${account.balanceMinor}, ` +
+              `archived: ${account.archived ? 'yes' : 'no'})`,
+          )
+          .join('; ')}.`
+  const categoryCandidates =
+    result.candidates.categories.length === 0
+      ? ''
+      : `\nCategory candidates: ${result.candidates.categories
+          .map((category) => `"${category.path}" (ID ${category.id})`)
+          .join('; ')}.`
+  const duplicates =
+    result.duplicateMatches.length === 0
+      ? ''
+      : `\nLikely duplicates: ${result.duplicateMatches
+          .map(
+            (match) =>
+              `${capitalize(match.kind)} Transaction ${match.transactionId}, ` +
+              `Account "${match.account.name}" (ID ${match.account.id}), ` +
+              `${match.amountMinor} ${match.account.currency} on ${match.occurredOn}, ` +
+              `${match.memo === null ? 'no memo' : `memo "${match.memo}"`}`,
+          )
+          .join('; ')}.`
+  const proposal =
+    result.proposedCategory === null
+      ? ''
+      : `\nProposed Category: "${result.proposedCategory.name}" under parent ` +
+        `${result.proposedCategory.parentId ?? 'none'}.`
+
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          `${result.message}${kindCandidates}${accountCandidates}${categoryCandidates}` +
+          `${duplicates}${proposal}\nNo Vault mutation was applied.`,
       },
     ],
     structuredContent: result,

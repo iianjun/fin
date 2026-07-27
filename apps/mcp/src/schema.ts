@@ -242,6 +242,16 @@ const incomeExpenseCurrencyTotalSchema = z.object({
   transactionIds: z.array(z.number().int().positive()),
 })
 
+const agentAppliedSourceSchema = z.enum([
+  'explicit',
+  'inferred',
+  'default',
+  'default_no_memo',
+  'omitted',
+  'confirmed_new',
+  'default_full_amount',
+])
+
 export const initializeVaultInputSchema = {
   path: z.string().min(1).describe('Local folder to initialize as a Vault'),
 }
@@ -733,4 +743,151 @@ export const querySpendingOutputSchema = {
       transactionIds: z.array(z.number().int().positive()),
     }),
   ),
+}
+
+export const recordAgentTransactionInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  kind: z
+    .enum(['income', 'expense'])
+    .optional()
+    .describe('Omit only when the Agent needs Income and Expense candidates'),
+  accountId: z.number().int().positive().optional().describe('Explicit active Account ID'),
+  accountName: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Exact or partial active Account name to resolve'),
+  amountMinor: z
+    .number()
+    .int()
+    .refine((amount) => amount !== 0)
+    .describe('Signed integer minor-unit amount'),
+  occurredOn: z
+    .string()
+    .optional()
+    .describe('Calendar date in YYYY-MM-DD format; omit to use the local date'),
+  memo: z.string().nullable().optional().describe('Optional concise memo'),
+  categoryId: z.number().int().positive().optional().describe('Explicit active Category ID'),
+  categoryQuery: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Existing Category name or current path to resolve'),
+  categoryAmountMinor: z
+    .number()
+    .int()
+    .refine((amount) => amount !== 0)
+    .optional()
+    .describe('Assignment amount; omit to assign the complete Transaction amount'),
+  proposedCategory: z
+    .object({
+      name: z.string().min(1),
+      parentId: z.number().int().positive().nullable().optional(),
+    })
+    .optional()
+    .describe('Agent-proposed Category; creation always requires confirmation'),
+  confirmNewCategory: z
+    .boolean()
+    .optional()
+    .describe('True only after explicit confirmation of proposed Category creation'),
+  confirmDuplicate: z
+    .boolean()
+    .optional()
+    .describe('True only after explicit confirmation of a legitimate duplicate'),
+}
+
+export const recordAgentTransactionOutputSchema = {
+  status: z.enum(['needs_clarification', 'confirmation_required', 'recorded']),
+  reason: z
+    .enum([
+      'transaction_kind_ambiguity',
+      'account_ambiguity',
+      'category_ambiguity',
+      'new_category_confirmation',
+      'duplicate_confirmation',
+    ])
+    .nullable(),
+  message: z.string().min(1),
+  candidates: z.object({
+    transactionKinds: z.array(
+      z.object({
+        kind: z.enum(['income', 'expense']),
+        label: z.enum(['Income', 'Expense']),
+      }),
+    ),
+    accounts: z.array(accountSchema),
+    categories: z.array(categorySchema),
+  }),
+  duplicateMatches: z.array(
+    z.object({
+      transactionId: z.number().int().positive(),
+      kind: z.enum(['income', 'expense']),
+      occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      account: transactionAccountSchema,
+      amountMinor: z
+        .number()
+        .int()
+        .refine((amount) => amount !== 0),
+      memo: z.string().min(1).nullable(),
+    }),
+  ),
+  proposedCategory: z
+    .object({
+      name: z.string().min(1),
+      parentId: z.number().int().positive().nullable().optional(),
+    })
+    .nullable(),
+  receipt: z
+    .object({
+      transaction: incomeExpenseTransactionSchema,
+      previousBalanceMinor: z.number().int(),
+      resultingBalanceMinor: z.number().int(),
+      categoryAssignment: categoryAssignmentSchema.nullable(),
+      uncategorizedAmountMinor: z.number().int(),
+      createdCategory: categorySchema.nullable(),
+      duplicateConfirmation: z.enum(['not_needed', 'confirmed']),
+      applied: z.object({
+        kind: z.object({
+          value: z.enum(['income', 'expense']),
+          source: agentAppliedSourceSchema,
+        }),
+        account: z.object({
+          value: transactionAccountSchema,
+          source: agentAppliedSourceSchema,
+        }),
+        amountMinor: z.object({
+          value: z
+            .number()
+            .int()
+            .refine((amount) => amount !== 0),
+          source: agentAppliedSourceSchema,
+        }),
+        occurredOn: z.object({
+          value: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          source: agentAppliedSourceSchema,
+        }),
+        memo: z.object({
+          value: z.string().min(1).nullable(),
+          source: agentAppliedSourceSchema,
+        }),
+        category: z.object({
+          value: z
+            .object({
+              id: z.number().int().positive(),
+              path: z.string().min(1),
+            })
+            .nullable(),
+          source: agentAppliedSourceSchema,
+        }),
+        categoryAmountMinor: z.object({
+          value: z
+            .number()
+            .int()
+            .refine((amount) => amount !== 0)
+            .nullable(),
+          source: agentAppliedSourceSchema,
+        }),
+      }),
+    })
+    .nullable(),
 }

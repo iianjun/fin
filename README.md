@@ -42,7 +42,9 @@ for creating, updating, listing, archiving, and reactivating Accounts and select
 the default Income and Expense Accounts. Category tools create and maintain three-level
 hierarchies with complete current paths. Every tool accepts a local Vault folder path. Mutation
 responses report the material values that were actually applied. Transaction tools record, list,
-and inspect Income and Expense with immediate Account balance results.
+and inspect Income and Expense with immediate Account balance results. Classification tools split
+Transactions across explicit or inferred Category Assignments and report signed uncategorized
+remainders.
 
 ## Design
 

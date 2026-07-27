@@ -36,8 +36,25 @@ const incomeExpenseTransactionSchema = z.object({
   kind: z.enum(['income', 'expense']),
   occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   account: transactionAccountSchema,
-  amountMinor: z.number().int().positive(),
+  amountMinor: z
+    .number()
+    .int()
+    .refine((amount) => amount !== 0),
   memo: z.string().min(1).nullable(),
+})
+
+const categoryAssignmentSchema = z.object({
+  id: z.number().int().positive(),
+  category: z.object({
+    id: z.number().int().positive(),
+    path: z.string().min(1),
+  }),
+  amountMinor: z
+    .number()
+    .int()
+    .refine((amount) => amount !== 0),
+  origin: z.enum(['explicit', 'inferred']),
+  currency: z.string().regex(/^[A-Z]{3}$/),
 })
 
 export const initializeVaultInputSchema = {
@@ -204,4 +221,40 @@ export const getIncomeExpenseTransactionInputSchema = {
 
 export const getIncomeExpenseTransactionOutputSchema = {
   transaction: incomeExpenseTransactionSchema,
+}
+
+export const setCategoryAssignmentsInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  transactionId: z.number().int().positive().describe('Income or Expense Transaction ID'),
+  assignments: z
+    .array(
+      z.object({
+        categoryId: z.number().int().positive(),
+        amountMinor: z
+          .number()
+          .int()
+          .refine((amount) => amount !== 0),
+        origin: z.enum(['explicit', 'inferred']),
+      }),
+    )
+    .describe('Complete replacement set of Category Assignments'),
+}
+
+export const setCategoryAssignmentsOutputSchema = {
+  action: z.literal('updated'),
+  transaction: incomeExpenseTransactionSchema,
+  previousAssignments: z.array(categoryAssignmentSchema),
+  assignments: z.array(categoryAssignmentSchema),
+  uncategorizedAmountMinor: z.number().int(),
+}
+
+export const getTransactionClassificationInputSchema = {
+  path: z.string().min(1).describe('Local Vault folder'),
+  transactionId: z.number().int().positive().describe('Income or Expense Transaction ID'),
+}
+
+export const getTransactionClassificationOutputSchema = {
+  transaction: incomeExpenseTransactionSchema,
+  assignments: z.array(categoryAssignmentSchema),
+  uncategorizedAmountMinor: z.number().int(),
 }

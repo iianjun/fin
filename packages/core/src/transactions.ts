@@ -87,7 +87,7 @@ export function recordIncomeExpense(
           )
           .run(kind, occurredOn, accountId, amountMinor, memo).lastInsertRowid,
       )
-      const transaction = readIncomeExpenseTransaction(database, transactionId)
+      const transaction = readIncomeExpenseTransactionFromDatabase(database, transactionId)
       const resultingBalanceMinor = readAccountBalance(database, accountId)
       const result = {
         action: 'created' as const,
@@ -124,7 +124,7 @@ export function getIncomeExpenseTransaction(
   const validatedTransactionId = validatePositiveId(transactionId, 'Transaction')
 
   return withVaultDatabase(vaultPath, (database) =>
-    readIncomeExpenseTransaction(database, validatedTransactionId),
+    readIncomeExpenseTransactionFromDatabase(database, validatedTransactionId),
   )
 }
 
@@ -230,7 +230,7 @@ function readAccountBalance(database: DatabaseSync, accountId: number): number {
   return row.balance_minor
 }
 
-function readIncomeExpenseTransaction(
+export function readIncomeExpenseTransactionFromDatabase(
   database: DatabaseSync,
   transactionId: number,
 ): IncomeExpenseTransaction {

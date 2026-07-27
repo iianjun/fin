@@ -2,8 +2,10 @@ import type {
   Account,
   AccountMutationResult,
   Category,
+  CategoryAssignment,
   CategoryMutationResult,
   IncomeExpenseTransaction,
+  TransactionClassification,
   VaultState,
 } from '@fin/core'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -518,6 +520,85 @@ describe('fin MCP server', () => {
     expect(inspected.structuredContent).toEqual({ transaction })
   })
 
+  it('sets Category Assignments and confirms inferred full paths and remainder', async () => {
+    const classification = createTransactionClassification()
+    const requests: Array<{
+      transactionId: number
+      assignments: Array<{ categoryId: number; amountMinor: number; origin: string }>
+    }> = []
+    const result = {
+      action: 'updated' as const,
+      ...classification,
+      previousAssignments: [],
+    }
+    const connection = await connectTestClient({
+      setCategoryAssignments: (_path, transactionId, assignments) => {
+        requests.push({ transactionId, assignments })
+        return result
+      },
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'set_category_assignments',
+      arguments: {
+        path: '/vaults/main',
+        transactionId: classification.transaction.id,
+        assignments: [
+          {
+            categoryId: 8,
+            amountMinor: 20_000,
+            origin: 'inferred',
+          },
+        ],
+      },
+    })
+
+    expect(requests).toEqual([
+      {
+        transactionId: 12,
+        assignments: [{ categoryId: 8, amountMinor: 20_000, origin: 'inferred' }],
+      },
+    ])
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Expense Transaction 12, 30000 KRW: inferred Category "Living > Food": ' +
+          '20000 KRW. Uncategorized remainder: 10000 KRW.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
+  it('inspects a Transaction with no Category Assignments', async () => {
+    const classification = createTransactionClassification({
+      assignments: [],
+      uncategorizedAmountMinor: 30_000,
+    })
+    const connection = await connectTestClient({
+      getTransactionClassification: () => classification,
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'get_transaction_classification',
+      arguments: { path: '/vaults/main', transactionId: 12 },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Expense Transaction 12, 30000 KRW: no Category Assignments. ' +
+          'Uncategorized remainder: 30000 KRW.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(classification)
+  })
+
   function createAccount(overrides: Partial<Account> = {}): Account {
     return {
       id: 7,
@@ -584,6 +665,33 @@ describe('fin MCP server', () => {
       },
       amountMinor: 30_000,
       memo: 'groceries',
+      ...overrides,
+    }
+  }
+
+  function createCategoryAssignment(
+    overrides: Partial<CategoryAssignment> = {},
+  ): CategoryAssignment {
+    return {
+      id: 21,
+      category: {
+        id: 8,
+        path: 'Living > Food',
+      },
+      amountMinor: 20_000,
+      origin: 'inferred',
+      currency: 'KRW',
+      ...overrides,
+    }
+  }
+
+  function createTransactionClassification(
+    overrides: Partial<TransactionClassification> = {},
+  ): TransactionClassification {
+    return {
+      transaction: createIncomeExpenseTransaction(),
+      assignments: [createCategoryAssignment()],
+      uncategorizedAmountMinor: 10_000,
       ...overrides,
     }
   }

@@ -6,6 +6,8 @@ import {
   archiveAccount,
   archiveCategory,
   type Category,
+  type CategoryAssignment,
+  type CategoryAssignmentInput,
   type CategoryCreation,
   type CategoryMutationResult,
   type CategoryUpdate,
@@ -15,6 +17,7 @@ import {
   createCategory,
   type DefaultAccountKind,
   getIncomeExpenseTransaction,
+  getTransactionClassification,
   type IncomeExpenseCreation,
   type IncomeExpenseTransaction,
   initializeVault,
@@ -26,8 +29,11 @@ import {
   reactivateAccount,
   reactivateCategory,
   recordIncomeExpense,
+  type SetCategoryAssignmentsResult,
   type SetDefaultAccountResult,
+  setCategoryAssignments,
   setDefaultAccount,
+  type TransactionClassification,
   updateAccount,
   updateCategory,
   type VaultState,
@@ -44,6 +50,8 @@ import {
   createCategoryOutputSchema,
   getIncomeExpenseTransactionInputSchema,
   getIncomeExpenseTransactionOutputSchema,
+  getTransactionClassificationInputSchema,
+  getTransactionClassificationOutputSchema,
   initializeVaultInputSchema,
   listAccountsInputSchema,
   listAccountsOutputSchema,
@@ -54,6 +62,8 @@ import {
   openVaultInputSchema,
   recordIncomeExpenseInputSchema,
   recordIncomeExpenseOutputSchema,
+  setCategoryAssignmentsInputSchema,
+  setCategoryAssignmentsOutputSchema,
   setDefaultAccountInputSchema,
   setDefaultAccountOutputSchema,
   updateAccountInputSchema,
@@ -100,11 +110,20 @@ export type TransactionOperations = {
     vaultPath: string,
     transactionId: number,
   ) => IncomeExpenseTransaction
+  getTransactionClassification: (
+    vaultPath: string,
+    transactionId: number,
+  ) => TransactionClassification
   listIncomeExpenseTransactions: (vaultPath: string) => IncomeExpenseTransaction[]
   recordIncomeExpense: (
     vaultPath: string,
     creation: IncomeExpenseCreation,
   ) => RecordIncomeExpenseResult
+  setCategoryAssignments: (
+    vaultPath: string,
+    transactionId: number,
+    assignments: CategoryAssignmentInput[],
+  ) => SetCategoryAssignmentsResult
 }
 
 export type FinOperations = VaultOperations &
@@ -118,6 +137,7 @@ const defaultOperations: FinOperations = {
   createAccount,
   createCategory,
   getIncomeExpenseTransaction,
+  getTransactionClassification,
   initializeVault,
   listAccounts,
   listCategories,
@@ -126,6 +146,7 @@ const defaultOperations: FinOperations = {
   reactivateAccount,
   reactivateCategory,
   recordIncomeExpense,
+  setCategoryAssignments,
   setDefaultAccount,
   updateAccount,
   updateCategory,
@@ -339,6 +360,36 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       createGetIncomeExpenseToolResult(operations.getIncomeExpenseTransaction(path, transactionId)),
   )
 
+  server.registerTool(
+    'set_category_assignments',
+    {
+      title: 'Set Category Assignments',
+      description:
+        'Replace the complete Category Assignment set for an Income or Expense Transaction.',
+      inputSchema: setCategoryAssignmentsInputSchema,
+      outputSchema: setCategoryAssignmentsOutputSchema,
+    },
+    ({ path, transactionId, assignments }) =>
+      createSetCategoryAssignmentsToolResult(
+        operations.setCategoryAssignments(path, transactionId, assignments),
+      ),
+  )
+
+  server.registerTool(
+    'get_transaction_classification',
+    {
+      title: 'Get Transaction Classification',
+      description:
+        'Inspect Category Assignments and the signed uncategorized remainder of a Transaction.',
+      inputSchema: getTransactionClassificationInputSchema,
+      outputSchema: getTransactionClassificationOutputSchema,
+    },
+    ({ path, transactionId }) =>
+      createTransactionClassificationToolResult(
+        operations.getTransactionClassification(path, transactionId),
+      ),
+  )
+
   return server
 }
 
@@ -506,6 +557,20 @@ function createGetIncomeExpenseToolResult(transaction: IncomeExpenseTransaction)
   }
 }
 
+function createSetCategoryAssignmentsToolResult(result: SetCategoryAssignmentsResult) {
+  return {
+    content: [{ type: 'text' as const, text: formatTransactionClassification(result) }],
+    structuredContent: result,
+  }
+}
+
+function createTransactionClassificationToolResult(result: TransactionClassification) {
+  return {
+    content: [{ type: 'text' as const, text: formatTransactionClassification(result) }],
+    structuredContent: result,
+  }
+}
+
 function formatAccount(account: Account): string {
   return (
     `${formatNature(account.nature)} Account "${account.name}" ` +
@@ -522,6 +587,28 @@ function formatIncomeExpenseTransaction(transaction: IncomeExpenseTransaction): 
     `(ID ${transaction.account.id}, ${transaction.account.currency}) — ` +
     `${formatTransactionKind(transaction.kind)} Transaction ${transaction.id}, ` +
     `${transaction.amountMinor} minor units on ${transaction.occurredOn}, ${memo}`
+  )
+}
+
+function formatTransactionClassification(classification: TransactionClassification): string {
+  const assignments =
+    classification.assignments.length === 0
+      ? 'no Category Assignments'
+      : classification.assignments.map(formatCategoryAssignment).join('; ')
+
+  return (
+    `${formatTransactionKind(classification.transaction.kind)} Transaction ` +
+    `${classification.transaction.id}, ${classification.transaction.amountMinor} ` +
+    `${classification.transaction.account.currency}: ${assignments}. ` +
+    `Uncategorized remainder: ${classification.uncategorizedAmountMinor} ` +
+    `${classification.transaction.account.currency}.`
+  )
+}
+
+function formatCategoryAssignment(assignment: CategoryAssignment): string {
+  return (
+    `${assignment.origin} Category "${assignment.category.path}": ` +
+    `${assignment.amountMinor} ${assignment.currency}`
   )
 }
 

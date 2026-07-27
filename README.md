@@ -51,7 +51,9 @@ Refunds as negative Expenses, attach optional original-Expense links, record tra
 positive Expenses linked to Transfers, and expose related Transactions before a multi-Transaction
 change. Transaction lifecycle tools edit every Transaction shape in place, hard-delete active
 Transactions, render immutable Change Records in natural language, and create a new Transaction
-identity from deletion history.
+identity from deletion history. Query tools report currency-separated balances and net worth,
+filter Transactions with evidence-backed Income and Expense totals, and aggregate Expense through
+current Category rollups, memo matches, and explicit uncategorized amounts.
 
 ## Design
 

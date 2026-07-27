@@ -2,6 +2,7 @@ import type {
   Account,
   AccountMutationResult,
   AdjustmentTransaction,
+  BalanceQueryResult,
   Category,
   CategoryAssignment,
   CategoryMutationResult,
@@ -9,10 +10,13 @@ import type {
   EditTransactionResult,
   IncomeExpenseTransaction,
   IncomeExpenseTransactionState,
+  QueryIncomeExpenseTransaction,
   RecordRelatedExpenseResult,
   RecreateTransactionResult,
+  SpendingQueryResult,
   TransactionChangeRecord,
   TransactionClassification,
+  TransactionQueryResult,
   TransactionRelationInspection,
   TransactionSnapshot,
   TransferTransaction,
@@ -1121,6 +1125,154 @@ describe('fin MCP server', () => {
     expect(response.structuredContent).toEqual(result)
   })
 
+  it('queries Account balances and net worth separately by currency', async () => {
+    const result: BalanceQueryResult = {
+      accounts: [createAccount({ balanceMinor: 12_500 })],
+      netWorthByCurrency: [{ currency: 'KRW', amountMinor: 12_500 }],
+    }
+    const connection = await connectTestClient({
+      queryBalances: () => result,
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'query_balances',
+      arguments: { path: '/vaults/main' },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Account 7: Asset Account "Daily Cash" ' +
+          '(KRW, balance 12500 minor units, archived: no)\n' +
+          'Net worth: 12500 KRW.',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
+  it('queries filtered Transactions with evidence-backed Income and Expense totals', async () => {
+    const result: TransactionQueryResult = {
+      filters: {
+        dateFrom: '2026-07-27',
+        dateTo: '2026-07-28',
+        accountId: 4,
+        kinds: ['expense'],
+        memoContains: 'coffee',
+      },
+      transactions: [createQueryExpense()],
+      incomeExpenseTotalsByCurrency: [
+        {
+          currency: 'KRW',
+          incomeMinor: 0,
+          expenseMinor: 30_000,
+          netIncomeMinor: -30_000,
+          transactionIds: [12],
+        },
+      ],
+    }
+    const requests: unknown[] = []
+    const connection = await connectTestClient({
+      queryTransactions: (_path, filters) => {
+        requests.push(filters)
+        return result
+      },
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'query_transactions',
+      arguments: {
+        path: '/vaults/main',
+        dateFrom: '2026-07-27',
+        dateTo: '2026-07-28',
+        accountId: 4,
+        kinds: ['expense'],
+        memoContains: 'coffee',
+      },
+    })
+
+    expect(requests).toEqual([
+      {
+        dateFrom: '2026-07-27',
+        dateTo: '2026-07-28',
+        accountId: 4,
+        kinds: ['expense'],
+        memoContains: 'coffee',
+      },
+    ])
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Matched 1 Transaction(s).\n' +
+          'Expense Transaction 12 on 2026-07-27, memo "coffee": ' +
+          'Account "Bank" (ID 4), 30000 KRW; explicit Category "Living > Food" ' +
+          '20000 KRW; uncategorized 10000 KRW; no relations\n' +
+          'Income and Expense totals: KRW Income 0, Expense 30000, ' +
+          'net Income -30000; evidence Transactions 12',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
+  it('queries Category rollups and uncategorized spending with Transaction evidence', async () => {
+    const result: SpendingQueryResult = {
+      filters: {
+        dateFrom: null,
+        dateTo: null,
+        accountId: null,
+        memoContains: 'coffee',
+        categoryId: 8,
+      },
+      transactions: [createQueryExpense()],
+      expenseTotalsByCurrency: [{ currency: 'KRW', amountMinor: 30_000 }],
+      uncategorizedByCurrency: [{ currency: 'KRW', amountMinor: 10_000 }],
+      categoryRollups: [
+        {
+          categoryId: 8,
+          categoryPath: 'Living > Food',
+          currency: 'KRW',
+          amountMinor: 20_000,
+          transactionIds: [12],
+        },
+      ],
+    }
+    const connection = await connectTestClient({
+      querySpending: () => result,
+    })
+    client = connection.client
+    server = connection.server
+
+    const response = await client.callTool({
+      name: 'query_spending',
+      arguments: {
+        path: '/vaults/main',
+        memoContains: 'coffee',
+        categoryId: 8,
+      },
+    })
+
+    expect(response.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Matched 1 Expense Transaction(s).\n' +
+          'Expense totals: 30000 KRW.\n' +
+          'Uncategorized: 10000 KRW.\n' +
+          'Category rollups:\n' +
+          'Category "Living > Food" (ID 8): 20000 KRW; evidence Transactions 12\n' +
+          'Expense Transaction 12 on 2026-07-27, memo "coffee": ' +
+          'Account "Bank" (ID 4), 30000 KRW; explicit Category "Living > Food" ' +
+          '20000 KRW; uncategorized 10000 KRW; no relations',
+      },
+    ])
+    expect(response.structuredContent).toEqual(result)
+  })
+
   function createAccount(overrides: Partial<Account> = {}): Account {
     return {
       id: 7,
@@ -1314,6 +1466,34 @@ describe('fin MCP server', () => {
         },
       ],
       ...overrides,
+    }
+  }
+
+  function createQueryExpense(): QueryIncomeExpenseTransaction {
+    return {
+      id: 12,
+      kind: 'expense',
+      occurredOn: '2026-07-27',
+      memo: 'coffee',
+      relations: [],
+      account: {
+        id: 4,
+        name: 'Bank',
+        nature: 'asset',
+        currency: 'KRW',
+        archived: false,
+      },
+      amountMinor: 30_000,
+      assignments: [
+        {
+          categoryId: 8,
+          categoryPath: 'Living > Food',
+          amountMinor: 20_000,
+          origin: 'explicit',
+          currency: 'KRW',
+        },
+      ],
+      uncategorizedAmountMinor: 10_000,
     }
   }
 

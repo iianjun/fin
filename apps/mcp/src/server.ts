@@ -8,6 +8,7 @@ import {
   type AppliedTransactionRelation,
   archiveAccount,
   archiveCategory,
+  type BalanceQueryResult,
   type Category,
   type CategoryAssignment,
   type CategoryAssignmentInput,
@@ -34,6 +35,10 @@ import {
   listIncomeExpenseTransactions,
   listTransactionChangeRecords,
   openVault,
+  type QueryTransaction,
+  queryBalances,
+  querySpending,
+  queryTransactions,
   type RecordAdjustmentResult,
   type RecordIncomeExpenseResult,
   type RecordRelatedExpenseResult,
@@ -50,11 +55,13 @@ import {
   recreateTransaction,
   type SetCategoryAssignmentsResult,
   type SetDefaultAccountResult,
+  type SpendingQueryResult,
   setCategoryAssignments,
   setDefaultAccount,
   type TransactionChangeRecord,
   type TransactionClassification,
   type TransactionKind,
+  type TransactionQueryResult,
   type TransactionRelationInspection,
   type TransactionReplacement,
   type TransactionSnapshot,
@@ -96,6 +103,12 @@ import {
   listTransactionChangeRecordsInputSchema,
   listTransactionChangeRecordsOutputSchema,
   openVaultInputSchema,
+  queryBalancesInputSchema,
+  queryBalancesOutputSchema,
+  querySpendingInputSchema,
+  querySpendingOutputSchema,
+  queryTransactionsInputSchema,
+  queryTransactionsOutputSchema,
   recordAdjustmentInputSchema,
   recordAdjustmentOutputSchema,
   recordIncomeExpenseInputSchema,
@@ -183,10 +196,17 @@ export type TransactionOperations = {
   ) => SetCategoryAssignmentsResult
 }
 
+export type QueryOperations = {
+  queryBalances: typeof queryBalances
+  querySpending: typeof querySpending
+  queryTransactions: typeof queryTransactions
+}
+
 export type FinOperations = VaultOperations &
   AccountOperations &
   CategoryOperations &
-  TransactionOperations
+  TransactionOperations &
+  QueryOperations
 
 const defaultOperations: FinOperations = {
   archiveAccount,
@@ -204,6 +224,9 @@ const defaultOperations: FinOperations = {
   listIncomeExpenseTransactions,
   listTransactionChangeRecords,
   openVault,
+  queryBalances,
+  querySpending,
+  queryTransactions,
   reactivateAccount,
   reactivateCategory,
   recordAdjustment,
@@ -648,6 +671,60 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       ),
   )
 
+  server.registerTool(
+    'query_balances',
+    {
+      title: 'Query Balances',
+      description:
+        'Inspect every Account balance and archive state with net worth kept separate by currency.',
+      inputSchema: queryBalancesInputSchema,
+      outputSchema: queryBalancesOutputSchema,
+    },
+    ({ path }) => createQueryBalancesToolResult(operations.queryBalances(path)),
+  )
+
+  server.registerTool(
+    'query_transactions',
+    {
+      title: 'Query Transactions',
+      description:
+        'Filter Transactions by date, Account, kind, and memo with currency-separated Income and Expense totals.',
+      inputSchema: queryTransactionsInputSchema,
+      outputSchema: queryTransactionsOutputSchema,
+    },
+    ({ path, dateFrom, dateTo, accountId, kinds, memoContains }) =>
+      createQueryTransactionsToolResult(
+        operations.queryTransactions(path, {
+          dateFrom,
+          dateTo,
+          accountId,
+          kinds,
+          memoContains,
+        }),
+      ),
+  )
+
+  server.registerTool(
+    'query_spending',
+    {
+      title: 'Query Spending',
+      description:
+        'Query net Expense, current Category rollups, uncategorized amounts, and memo evidence by currency.',
+      inputSchema: querySpendingInputSchema,
+      outputSchema: querySpendingOutputSchema,
+    },
+    ({ path, dateFrom, dateTo, accountId, memoContains, categoryId }) =>
+      createQuerySpendingToolResult(
+        operations.querySpending(path, {
+          dateFrom,
+          dateTo,
+          accountId,
+          memoContains,
+          categoryId,
+        }),
+      ),
+  )
+
   return server
 }
 
@@ -1063,6 +1140,148 @@ function createRecreateTransactionToolResult(result: RecreateTransactionResult) 
     ],
     structuredContent: result,
   }
+}
+
+function createQueryBalancesToolResult(result: BalanceQueryResult) {
+  const accounts =
+    result.accounts.length === 0
+      ? 'No Accounts.'
+      : result.accounts
+          .map((account) => `Account ${account.id}: ${formatAccount(account)}`)
+          .join('\n')
+  const netWorth =
+    result.netWorthByCurrency.length === 0
+      ? 'Net worth: no currencies.'
+      : `Net worth: ${result.netWorthByCurrency
+          .map((total) => `${total.amountMinor} ${total.currency}`)
+          .join('; ')}.`
+
+  return {
+    content: [{ type: 'text' as const, text: `${accounts}\n${netWorth}` }],
+    structuredContent: result,
+  }
+}
+
+function createQueryTransactionsToolResult(result: TransactionQueryResult) {
+  const transactions =
+    result.transactions.length === 0
+      ? 'No matching Transactions.'
+      : result.transactions.map(formatQueryTransaction).join('\n')
+  const totals =
+    result.incomeExpenseTotalsByCurrency.length === 0
+      ? 'Income and Expense totals: none.'
+      : `Income and Expense totals: ${result.incomeExpenseTotalsByCurrency
+          .map(
+            (total) =>
+              `${total.currency} Income ${total.incomeMinor}, Expense ${total.expenseMinor}, ` +
+              `net Income ${total.netIncomeMinor}; evidence Transactions ` +
+              `${total.transactionIds.join(', ')}`,
+          )
+          .join('\n')}`
+
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: `Matched ${result.transactions.length} Transaction(s).\n${transactions}\n${totals}`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
+function createQuerySpendingToolResult(result: SpendingQueryResult) {
+  const expenseTotals =
+    result.expenseTotalsByCurrency.length === 0
+      ? 'Expense totals: none.'
+      : `Expense totals: ${formatCurrencyAmounts(result.expenseTotalsByCurrency)}.`
+  const uncategorized =
+    result.uncategorizedByCurrency.length === 0
+      ? 'Uncategorized: none.'
+      : `Uncategorized: ${formatCurrencyAmounts(result.uncategorizedByCurrency)}.`
+  const rollups =
+    result.categoryRollups.length === 0
+      ? 'Category rollups: none.'
+      : `Category rollups:\n${result.categoryRollups
+          .map(
+            (rollup) =>
+              `Category "${rollup.categoryPath}" (ID ${rollup.categoryId}): ` +
+              `${rollup.amountMinor} ${rollup.currency}; evidence Transactions ` +
+              `${rollup.transactionIds.join(', ')}`,
+          )
+          .join('\n')}`
+  const evidence =
+    result.transactions.length === 0
+      ? 'No matching Expense evidence.'
+      : result.transactions.map(formatQueryTransaction).join('\n')
+
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text:
+          `Matched ${result.transactions.length} Expense Transaction(s).\n` +
+          `${expenseTotals}\n${uncategorized}\n${rollups}\n${evidence}`,
+      },
+    ],
+    structuredContent: result,
+  }
+}
+
+function formatQueryTransaction(transaction: QueryTransaction): string {
+  const memo = transaction.memo === null ? 'no memo' : `memo "${transaction.memo}"`
+  const relations =
+    transaction.relations.length === 0
+      ? 'no relations'
+      : transaction.relations
+          .map(
+            (relation) =>
+              `${relation.direction} ${relation.relationKind} Transaction ` +
+              `${relation.relatedTransactionId}`,
+          )
+          .join(', ')
+
+  if (transaction.kind === 'transfer') {
+    return (
+      `Transfer Transaction ${transaction.id} on ${transaction.occurredOn}, ${memo}: ` +
+      `Account "${transaction.source.account.name}" (ID ${transaction.source.account.id}) ` +
+      `sends ${transaction.source.amountMinor} ${transaction.source.account.currency}; ` +
+      `Account "${transaction.destination.account.name}" ` +
+      `(ID ${transaction.destination.account.id}) receives ` +
+      `${transaction.destination.amountMinor} ` +
+      `${transaction.destination.account.currency}; ${relations}`
+    )
+  }
+
+  const base =
+    `${capitalize(transaction.kind)} Transaction ${transaction.id} on ` +
+    `${transaction.occurredOn}, ${memo}: Account "${transaction.account.name}" ` +
+    `(ID ${transaction.account.id}), ${transaction.amountMinor} ` +
+    `${transaction.account.currency}`
+
+  if (transaction.kind === 'adjustment') {
+    return `${base}; ${relations}`
+  }
+
+  const assignments =
+    transaction.assignments.length === 0
+      ? 'no Category Assignments'
+      : transaction.assignments
+          .map(
+            (assignment) =>
+              `${assignment.origin} Category "${assignment.categoryPath}" ` +
+              `${assignment.amountMinor} ${assignment.currency}`,
+          )
+          .join(', ')
+
+  return (
+    `${base}; ${assignments}; uncategorized ` +
+    `${transaction.uncategorizedAmountMinor} ${transaction.account.currency}; ${relations}`
+  )
+}
+
+function formatCurrencyAmounts(amounts: Array<{ currency: string; amountMinor: number }>): string {
+  return amounts.map((amount) => `${amount.amountMinor} ${amount.currency}`).join('; ')
 }
 
 function formatLifecycleTransaction(transaction: TransactionState): string {

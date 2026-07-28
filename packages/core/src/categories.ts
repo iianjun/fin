@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import { FinError } from './errors.js'
 import { insertChangeRecord, runMutation } from './persistence.js'
 import { withVaultDatabase } from './vault.js'
 
@@ -364,7 +365,10 @@ function readCategory(database: DatabaseSync, categoryId: number): Category {
     .get(categoryId) as CategoryRow | undefined
 
   if (!row) {
-    throw new Error(`Category ${categoryId} does not exist`)
+    throw new FinError('ENTITY_NOT_FOUND', `Category ${categoryId} does not exist`, {
+      entityType: 'category',
+      entityId: categoryId,
+    })
   }
 
   return mapCategoryRow(row)

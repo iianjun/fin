@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import { FinError } from './errors.js'
 import { insertChangeRecord, runMutation } from './persistence.js'
 import { withVaultDatabase } from './vault.js'
 
@@ -204,9 +205,17 @@ export function archiveAccount(vaultPath: string, accountId: number): AccountMut
       const defaultKinds = readDefaultKinds(settings, validatedAccountId)
 
       if (defaultKinds.length > 0) {
-        throw new Error(
+        throw new FinError(
+          'PREREQUISITE_REQUIRED',
           `Account ${validatedAccountId} ("${previousAccount.name}") is configured as the ` +
             `default ${defaultKinds.join(' and ')} Account. Clear the default before archiving it.`,
+          {
+            entityType: 'account',
+            entityId: validatedAccountId,
+            entityName: previousAccount.name,
+            prerequisite: 'clear_default_accounts',
+            defaultKinds: defaultKinds.map((kind) => kind.toLowerCase()),
+          },
         )
       }
 
@@ -346,7 +355,11 @@ function normalizeCurrency(currency: string): string {
   const normalizedCurrency = currency.trim().toUpperCase()
 
   if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
-    throw new Error('Account currency must be a three-letter code such as KRW or USD')
+    throw new FinError(
+      'INVALID_INPUT',
+      'Account currency must be a three-letter code such as KRW or USD',
+      { fields: ['currency'] },
+    )
   }
 
   return normalizedCurrency
@@ -428,7 +441,10 @@ function readAccount(database: DatabaseSync, accountId: number): Account {
     .get(accountId) as AccountRow | undefined
 
   if (!row) {
-    throw new Error(`Account ${accountId} does not exist`)
+    throw new FinError('ENTITY_NOT_FOUND', `Account ${accountId} does not exist`, {
+      entityType: 'account',
+      entityId: accountId,
+    })
   }
 
   return mapAccountRow(row)

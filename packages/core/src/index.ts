@@ -63,6 +63,8 @@ export {
   getTransactionClassification,
   setCategoryAssignments,
 } from './classifications.js'
+export type { FinErrorCode } from './errors.js'
+export { FinError, finErrorCodes, isFinError } from './errors.js'
 export type {
   AppliedSpendingFilters,
   AppliedTransactionFilters,

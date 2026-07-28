@@ -25,12 +25,14 @@ import {
   deleteTransaction,
   type EditTransactionResult,
   editTransaction,
+  FinError,
   getIncomeExpenseTransaction,
   getTransactionClassification,
   type IncomeExpenseCreation,
   type IncomeExpenseTransaction,
   initializeVault,
   inspectTransactionRelations,
+  isFinError,
   listAccounts,
   listCategories,
   listIncomeExpenseTransactions,
@@ -75,7 +77,13 @@ import {
   updateCategory,
   type VaultState,
 } from '@fin/core'
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import {
+  McpServer,
+  type RegisteredTool,
+  type ToolCallback,
+} from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { AnySchema, ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js'
+import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js'
 import {
   accountIdInputSchema,
   accountMutationOutputSchema,
@@ -89,6 +97,7 @@ import {
   deleteTransactionOutputSchema,
   editTransactionInputSchema,
   editTransactionOutputSchema,
+  finErrorMetadataSchema,
   getIncomeExpenseTransactionInputSchema,
   getIncomeExpenseTransactionOutputSchema,
   getTransactionClassificationInputSchema,
@@ -217,6 +226,50 @@ export type FinOperations = VaultOperations &
   QueryOperations &
   AgentOperations
 
+type ToolConfiguration<
+  OutputArgs extends ZodRawShapeCompat | AnySchema,
+  InputArgs extends undefined | ZodRawShapeCompat | AnySchema,
+> = {
+  title?: string
+  description?: string
+  inputSchema?: InputArgs
+  outputSchema?: OutputArgs
+  annotations?: ToolAnnotations
+  _meta?: Record<string, unknown>
+}
+
+class FinMcpServer extends McpServer {
+  override registerTool<
+    OutputArgs extends ZodRawShapeCompat | AnySchema,
+    InputArgs extends undefined | ZodRawShapeCompat | AnySchema = undefined,
+  >(
+    name: string,
+    config: ToolConfiguration<OutputArgs, InputArgs>,
+    callback: ToolCallback<InputArgs>,
+  ): RegisteredTool {
+    const errorHandlingCallback = (async (...parameters: unknown[]) => {
+      const argumentsValue = toToolArguments(parameters[0])
+
+      try {
+        return await Reflect.apply(callback, undefined, parameters)
+      } catch (error) {
+        return validateToolErrorResult(createToolErrorResult(name, argumentsValue, error))
+      }
+    }) as ToolCallback<InputArgs>
+
+    return super.registerTool(name, config, errorHandlingCallback)
+  }
+}
+
+const finServerInstructions = [
+  'Use the exact Vault path supplied by the user.',
+  'Call open_vault for an existing Vault.',
+  'When a tool reports VAULT_NOT_FOUND and the path is the intended new location, call initialize_vault with the same path, then retry the original tool.',
+  'When the path is uncertain, ask the user instead of creating a Vault.',
+  'Never initialize over an existing non-fin database or overwrite an existing fin.sqlite file.',
+  'Do not automatically retry integrity or system failures, and do not use initialize_vault to repair them.',
+].join(' ')
+
 const defaultOperations: FinOperations = {
   archiveAccount,
   archiveCategory,
@@ -253,10 +306,15 @@ const defaultOperations: FinOperations = {
 
 export function createFinServer(operationOverrides: Partial<FinOperations> = {}): McpServer {
   const operations = { ...defaultOperations, ...operationOverrides }
-  const server = new McpServer({
-    name: 'fin',
-    version: '0.0.0',
-  })
+  const server = new FinMcpServer(
+    {
+      name: 'fin',
+      version: '0.0.0',
+    },
+    {
+      instructions: finServerInstructions,
+    },
+  )
 
   server.registerTool(
     'initialize_vault',
@@ -778,6 +836,417 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
   )
 
   return server
+}
+
+function createToolErrorResult(
+  toolName: string,
+  toolArguments: Record<string, unknown>,
+  error: unknown,
+): CallToolResult {
+  if (isFinError(error)) {
+    return createKnownToolErrorResult(toolName, toolArguments, error)
+  }
+
+  const path = readString(toolArguments.path)
+  const location = path === undefined ? 'the requested location' : `the Vault path ${path}`
+
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text',
+        text:
+          `fin could not safely access ${location}. ` +
+          'Verify the path and its permissions with the user. Do not retry or call ' +
+          'initialize_vault until the location has been verified.',
+      },
+    ],
+    _meta: {
+      'fin/error': {
+        code: 'SYSTEM_FAILURE',
+        retryable: false,
+      },
+    },
+  }
+}
+
+function validateToolErrorResult(result: CallToolResult): CallToolResult {
+  finErrorMetadataSchema.parse(result._meta?.['fin/error'])
+  return result
+}
+
+function createKnownToolErrorResult(
+  toolName: string,
+  toolArguments: Record<string, unknown>,
+  error: FinError,
+): CallToolResult {
+  const path = readString(error.details.path) ?? readString(toolArguments.path)
+  const databasePath = readString(error.details.databasePath)
+
+  if (error.code === 'VAULT_NOT_FOUND' && path !== undefined) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text:
+            `No fin Vault exists at ${path}. ` +
+            `Call initialize_vault with the same path before retrying ${toolName}.`,
+        },
+      ],
+      _meta: {
+        'fin/error': {
+          code: error.code,
+          retryable: true,
+          recovery: {
+            tool: 'initialize_vault',
+            arguments: { path },
+          },
+          retry: {
+            tool: toolName,
+            arguments: toolArguments,
+          },
+        },
+      },
+    }
+  }
+
+  if (error.code === 'VAULT_ALREADY_EXISTS' && path !== undefined) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text:
+            `A fin Vault already exists at ${path}. ` +
+            'Call open_vault with the same path instead of initializing it again.',
+        },
+      ],
+      _meta: {
+        'fin/error': {
+          code: error.code,
+          retryable: true,
+          recovery: {
+            tool: 'open_vault',
+            arguments: { path },
+          },
+        },
+      },
+    }
+  }
+
+  if (
+    error.code === 'INTEGRITY_FAILURE' &&
+    error.details.reason === 'not_fin_vault' &&
+    databasePath !== undefined
+  ) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text:
+            `The database at ${databasePath} is not a valid fin Vault. ` +
+            'Do not call initialize_vault, overwrite the database, or retry this tool. ' +
+            'Ask the user to inspect the existing database or choose a different path.',
+        },
+      ],
+      _meta: {
+        'fin/error': {
+          code: error.code,
+          retryable: false,
+        },
+      },
+    }
+  }
+
+  if (error.code === 'INTEGRITY_FAILURE' && path !== undefined) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text:
+            `The fin Vault at ${path} has an invalid internal state. ` +
+            'Do not retry or call initialize_vault. Ask the user to inspect the Vault and ' +
+            'report the problem.',
+        },
+      ],
+      _meta: {
+        'fin/error': {
+          code: error.code,
+          retryable: false,
+        },
+      },
+    }
+  }
+
+  if (error.code === 'ENTITY_NOT_FOUND' && path !== undefined) {
+    const recovery = readEntityRecovery(error.details.entityType)
+
+    if (recovery !== undefined) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text:
+              `${error.message}. Call ${recovery.tool} with this Vault path to inspect valid ` +
+              `${recovery.label} IDs before retrying ${toolName}.`,
+          },
+        ],
+        _meta: {
+          'fin/error': {
+            code: error.code,
+            retryable: true,
+            recovery: {
+              tool: recovery.tool,
+              arguments: { path },
+            },
+            retry: {
+              tool: toolName,
+              arguments: toolArguments,
+            },
+          },
+        },
+      }
+    }
+  }
+
+  if (error.code === 'ENTITY_ARCHIVED' && path !== undefined) {
+    const recovery = readArchivedEntityRecovery(
+      error.details.entityType,
+      error.details.entityId,
+      path,
+    )
+
+    if (recovery !== undefined) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text:
+              `${error.message}. Call ${recovery.listTool} with this Vault path to choose an ` +
+              `active ${recovery.label}. Only call ${recovery.reactivateTool} for ` +
+              `${recovery.label} ${recovery.entityId} after the user confirms reactivation, ` +
+              `then retry ${toolName}.`,
+          },
+        ],
+        _meta: {
+          'fin/error': {
+            code: error.code,
+            retryable: true,
+            recovery: {
+              tool: recovery.listTool,
+              arguments: { path },
+            },
+            alternative: {
+              tool: recovery.reactivateTool,
+              arguments: recovery.reactivateArguments,
+              requiresConfirmation: true,
+            },
+            retry: {
+              tool: toolName,
+              arguments: toolArguments,
+            },
+          },
+        },
+      }
+    }
+  }
+
+  if (
+    error.code === 'PREREQUISITE_REQUIRED' &&
+    error.details.prerequisite === 'clear_default_accounts' &&
+    path !== undefined
+  ) {
+    const entityId = readPositiveInteger(error.details.entityId)
+    const entityName = readString(error.details.entityName)
+    const defaultKinds = readDefaultAccountKinds(error.details.defaultKinds)
+
+    if (entityId !== undefined && entityName !== undefined && defaultKinds.length > 0) {
+      const steps = defaultKinds.map((kind) => ({
+        tool: 'set_default_account',
+        arguments: {
+          path,
+          kind,
+          accountId: null,
+        },
+      }))
+      const defaultLabel = defaultKinds.map(capitalize).join(' and ')
+      const instructions = steps
+        .map(
+          (step) =>
+            `Call ${step.tool} with kind "${String(step.arguments.kind)}" and accountId null`,
+        )
+        .join(', then ')
+
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text:
+              `Account ${entityId} ("${entityName}") is configured as the default ` +
+              `${defaultLabel} Account. ${instructions}, then retry ${toolName}.`,
+          },
+        ],
+        _meta: {
+          'fin/error': {
+            code: error.code,
+            retryable: true,
+            recovery: { steps },
+            retry: {
+              tool: toolName,
+              arguments: toolArguments,
+            },
+          },
+        },
+      }
+    }
+  }
+
+  if (error.code === 'INVALID_INPUT') {
+    const fields = readStringArray(error.details.fields)
+
+    if (fields.length > 0) {
+      const fieldLabel = fields.length === 1 ? `${fields[0]} field` : `${fields.join(', ')} fields`
+
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: `${error.message}. Correct the ${fieldLabel} before retrying ${toolName}.`,
+          },
+        ],
+        _meta: {
+          'fin/error': {
+            code: error.code,
+            retryable: true,
+            recovery: {
+              action: 'correct_arguments',
+              fields,
+            },
+          },
+        },
+      }
+    }
+  }
+
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text',
+        text:
+          'fin detected an invalid or unsafe Vault state. Do not retry or call initialize_vault. ' +
+          'Ask the user to inspect the Vault and report the problem.',
+      },
+    ],
+    _meta: {
+      'fin/error': {
+        code: error.code,
+        retryable: false,
+      },
+    },
+  }
+}
+
+function toToolArguments(value: unknown): Record<string, unknown> {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return { ...value }
+  }
+
+  return {}
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) && (value as number) > 0 ? (value as number) : undefined
+}
+
+function readDefaultAccountKinds(value: unknown): Array<'income' | 'expense'> {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.filter(
+    (kind): kind is 'income' | 'expense' => kind === 'income' || kind === 'expense',
+  )
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
+}
+
+function readEntityRecovery(entityType: unknown): { tool: string; label: string } | undefined {
+  if (entityType === 'account') {
+    return { tool: 'list_accounts', label: 'Account' }
+  }
+
+  if (entityType === 'category') {
+    return { tool: 'list_categories', label: 'Category' }
+  }
+
+  if (entityType === 'income_expense_transaction') {
+    return {
+      tool: 'list_income_expense_transactions',
+      label: 'Income or Expense Transaction',
+    }
+  }
+
+  if (entityType === 'transaction') {
+    return { tool: 'query_transactions', label: 'Transaction' }
+  }
+
+  return undefined
+}
+
+function readArchivedEntityRecovery(
+  entityType: unknown,
+  entityId: unknown,
+  path: string,
+):
+  | {
+      listTool: string
+      reactivateTool: string
+      reactivateArguments: Record<string, unknown>
+      label: string
+      entityId: number
+    }
+  | undefined {
+  if (!Number.isSafeInteger(entityId) || (entityId as number) <= 0) {
+    return undefined
+  }
+
+  if (entityType === 'account') {
+    return {
+      listTool: 'list_accounts',
+      reactivateTool: 'reactivate_account',
+      reactivateArguments: { path, accountId: entityId },
+      label: 'Account',
+      entityId: entityId as number,
+    }
+  }
+
+  if (entityType === 'category') {
+    return {
+      listTool: 'list_categories',
+      reactivateTool: 'reactivate_category',
+      reactivateArguments: { path, categoryId: entityId },
+      label: 'Category',
+      entityId: entityId as number,
+    }
+  }
+
+  return undefined
 }
 
 function createVaultToolResult(action: 'initialized' | 'opened', state: VaultState) {
@@ -1489,7 +1958,9 @@ function formatRelatedTransactionNotice(
 
 function requireToolNumber(value: number | undefined, field: string): number {
   if (value === undefined) {
-    throw new Error(`${field} is required for this Transaction kind`)
+    throw new FinError('INVALID_INPUT', `${field} is required for this Transaction kind`, {
+      fields: [field],
+    })
   }
 
   return value

@@ -1,3 +1,7 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import type {
   Account,
   AccountMutationResult,
@@ -32,10 +36,15 @@ import { createFinServer, type FinOperations } from './server.js'
 describe('fin MCP server', () => {
   let client: Client | undefined
   let server: McpServer | undefined
+  const temporaryDirectories: string[] = []
 
   afterEach(async () => {
     await client?.close()
     await server?.close()
+
+    for (const directory of temporaryDirectories.splice(0)) {
+      rmSync(directory, { force: true, recursive: true })
+    }
   })
 
   it('initializes a Vault and returns a concrete summary', async () => {
@@ -106,6 +115,609 @@ describe('fin MCP server', () => {
     expect(result.structuredContent).toEqual({
       action: 'opened',
       ...vaultState,
+    })
+  })
+
+  it('tells the Agent to initialize a missing Vault with the same path', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    await client.listTools()
+    const result = await client.callTool({
+      name: 'open_vault',
+      arguments: { path: vaultPath },
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          `No fin Vault exists at ${vaultPath}. ` +
+          'Call initialize_vault with the same path before retrying open_vault.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'VAULT_NOT_FOUND',
+        retryable: true,
+        recovery: {
+          tool: 'initialize_vault',
+          arguments: { path: vaultPath },
+        },
+        retry: {
+          tool: 'open_vault',
+          arguments: { path: vaultPath },
+        },
+      },
+    })
+  })
+
+  it('tells the Agent to initialize a missing Vault before retrying a financial tool', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    const result = await client.callTool({
+      name: 'list_accounts',
+      arguments: { path: vaultPath },
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          `No fin Vault exists at ${vaultPath}. ` +
+          'Call initialize_vault with the same path before retrying list_accounts.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'VAULT_NOT_FOUND',
+        retryable: true,
+        recovery: {
+          tool: 'initialize_vault',
+          arguments: { path: vaultPath },
+        },
+        retry: {
+          tool: 'list_accounts',
+          arguments: { path: vaultPath },
+        },
+      },
+    })
+  })
+
+  it('tells the Agent to open a Vault that is already initialized', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+    const result = await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          `A fin Vault already exists at ${vaultPath}. ` +
+          'Call open_vault with the same path instead of initializing it again.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'VAULT_ALREADY_EXISTS',
+        retryable: true,
+        recovery: {
+          tool: 'open_vault',
+          arguments: { path: vaultPath },
+        },
+      },
+    })
+  })
+
+  it('advertises the safe Vault workflow during server initialization', async () => {
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    const instructions = client.getInstructions()
+
+    expect(instructions).toContain('Use the exact Vault path supplied by the user')
+    expect(instructions).toContain('call initialize_vault with the same path')
+    expect(instructions).toContain('ask the user instead of creating a Vault')
+    expect(instructions).toContain('Never initialize over an existing non-fin database')
+    expect(instructions).toContain('Do not automatically retry integrity or system failures')
+  })
+
+  it('prevents initialization from overwriting a non-fin database', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const databasePath = join(vaultPath, 'fin.sqlite')
+    mkdirSync(vaultPath)
+    const database = new DatabaseSync(databasePath)
+    database.exec('CREATE TABLE unrelated_data (value TEXT)')
+    database.close()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    await client.listTools()
+    const result = await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          `The database at ${databasePath} is not a valid fin Vault. ` +
+          'Do not call initialize_vault, overwrite the database, or retry this tool. ' +
+          'Ask the user to inspect the existing database or choose a different path.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'INTEGRITY_FAILURE',
+        retryable: false,
+      },
+    })
+  })
+
+  it('sanitizes an unknown filesystem failure and prevents unsafe recovery', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    writeFileSync(vaultPath, 'not a directory')
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    await client.listTools()
+    const result = await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          `fin could not safely access the Vault path ${vaultPath}. ` +
+          'Verify the path and its permissions with the user. Do not retry or call ' +
+          'initialize_vault until the location has been verified.',
+      },
+    ])
+    expect(result.content).not.toContainEqual(
+      expect.objectContaining({ text: expect.stringContaining('EEXIST') }),
+    )
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'SYSTEM_FAILURE',
+        retryable: false,
+      },
+    })
+  })
+
+  it('prevents retries when an initialized Vault has invalid internal state', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    const initialized = await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+    const databasePath = (initialized.structuredContent as { databasePath: string }).databasePath
+    const database = new DatabaseSync(databasePath)
+    database.exec('DROP TRIGGER vault_settings_prevent_delete')
+    database.exec('DELETE FROM vault_settings')
+    database.close()
+
+    const result = await client.callTool({
+      name: 'open_vault',
+      arguments: { path: vaultPath },
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          `The fin Vault at ${vaultPath} has an invalid internal state. ` +
+          'Do not retry or call initialize_vault. Ask the user to inspect the Vault and ' +
+          'report the problem.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'INTEGRITY_FAILURE',
+        retryable: false,
+      },
+    })
+  })
+
+  it('tells the Agent how to discover a valid Account before retrying', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+    const result = await client.callTool({
+      name: 'update_account',
+      arguments: {
+        path: vaultPath,
+        accountId: 999,
+        name: 'Missing',
+      },
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Account 999 does not exist. Call list_accounts with this Vault path to inspect valid ' +
+          'Account IDs before retrying update_account.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'ENTITY_NOT_FOUND',
+        retryable: true,
+        recovery: {
+          tool: 'list_accounts',
+          arguments: { path: vaultPath },
+        },
+        retry: {
+          tool: 'update_account',
+          arguments: {
+            path: vaultPath,
+            accountId: 999,
+            name: 'Missing',
+          },
+        },
+      },
+    })
+  })
+
+  it('tells the Agent how to discover a valid Category before retrying', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+    const result = await client.callTool({
+      name: 'update_category',
+      arguments: {
+        path: vaultPath,
+        categoryId: 999,
+        name: 'Missing',
+      },
+    })
+
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Category 999 does not exist. Call list_categories with this Vault path to inspect ' +
+          'valid Category IDs before retrying update_category.',
+      },
+    ])
+    expect(result._meta).toMatchObject({
+      'fin/error': {
+        code: 'ENTITY_NOT_FOUND',
+        recovery: {
+          tool: 'list_categories',
+          arguments: { path: vaultPath },
+        },
+      },
+    })
+  })
+
+  it('tells the Agent how to discover a valid Transaction before retrying', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+    const result = await client.callTool({
+      name: 'get_income_expense_transaction',
+      arguments: {
+        path: vaultPath,
+        transactionId: 999,
+      },
+    })
+
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Income or Expense Transaction 999 does not exist. Call ' +
+          'list_income_expense_transactions with this Vault path to inspect valid Income or ' +
+          'Expense Transaction IDs before retrying get_income_expense_transaction.',
+      },
+    ])
+    expect(result._meta).toMatchObject({
+      'fin/error': {
+        code: 'ENTITY_NOT_FOUND',
+        recovery: {
+          tool: 'list_income_expense_transactions',
+          arguments: { path: vaultPath },
+        },
+      },
+    })
+  })
+
+  it('offers safe choices when an archived Account is selected', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+    const created = await client.callTool({
+      name: 'create_account',
+      arguments: {
+        path: vaultPath,
+        name: 'Daily Cash',
+        nature: 'asset',
+        currency: 'KRW',
+      },
+    })
+    const accountId = (
+      created.structuredContent as {
+        account: { id: number }
+      }
+    ).account.id
+    await client.callTool({
+      name: 'archive_account',
+      arguments: { path: vaultPath, accountId },
+    })
+
+    const result = await client.callTool({
+      name: 'record_income_expense',
+      arguments: {
+        path: vaultPath,
+        kind: 'expense',
+        accountId,
+        amountMinor: 5_000,
+        occurredOn: '2026-07-28',
+      },
+    })
+
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          `Archived Account ${accountId} ("Daily Cash") cannot receive new Transactions. ` +
+          'Call list_accounts with this Vault path to choose an active Account. Only call ' +
+          `reactivate_account for Account ${accountId} after the user confirms reactivation, ` +
+          'then retry record_income_expense.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'ENTITY_ARCHIVED',
+        retryable: true,
+        recovery: {
+          tool: 'list_accounts',
+          arguments: { path: vaultPath },
+        },
+        alternative: {
+          tool: 'reactivate_account',
+          arguments: { path: vaultPath, accountId },
+          requiresConfirmation: true,
+        },
+        retry: {
+          tool: 'record_income_expense',
+          arguments: {
+            path: vaultPath,
+            kind: 'expense',
+            accountId,
+            amountMinor: 5_000,
+            occurredOn: '2026-07-28',
+          },
+        },
+      },
+    })
+  })
+
+  it('identifies the prerequisite tool before archiving a default Account', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+    const created = await client.callTool({
+      name: 'create_account',
+      arguments: {
+        path: vaultPath,
+        name: 'Daily Cash',
+        nature: 'asset',
+        currency: 'KRW',
+      },
+    })
+    const accountId = (
+      created.structuredContent as {
+        account: { id: number }
+      }
+    ).account.id
+    await client.callTool({
+      name: 'set_default_account',
+      arguments: { path: vaultPath, kind: 'income', accountId },
+    })
+
+    const result = await client.callTool({
+      name: 'archive_account',
+      arguments: { path: vaultPath, accountId },
+    })
+
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          `Account ${accountId} ("Daily Cash") is configured as the default Income Account. ` +
+          'Call set_default_account with kind "income" and accountId null, then retry ' +
+          'archive_account.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'PREREQUISITE_REQUIRED',
+        retryable: true,
+        recovery: {
+          steps: [
+            {
+              tool: 'set_default_account',
+              arguments: {
+                path: vaultPath,
+                kind: 'income',
+                accountId: null,
+              },
+            },
+          ],
+        },
+        retry: {
+          tool: 'archive_account',
+          arguments: { path: vaultPath, accountId },
+        },
+      },
+    })
+  })
+
+  it('identifies fields that must be corrected before retrying invalid input', async () => {
+    const vaultPath = createTemporaryVaultPath()
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: vaultPath },
+    })
+    const result = await client.callTool({
+      name: 'create_account',
+      arguments: {
+        path: vaultPath,
+        name: 'Daily Cash',
+        nature: 'asset',
+        currency: 'KR',
+      },
+    })
+
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'Account currency must be a three-letter code such as KRW or USD. Correct the currency ' +
+          'field before retrying create_account.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'INVALID_INPUT',
+        retryable: true,
+        recovery: {
+          action: 'correct_arguments',
+          fields: ['currency'],
+        },
+      },
+    })
+  })
+
+  it('identifies a blank Vault path as input to correct', async () => {
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    const result = await client.callTool({
+      name: 'initialize_vault',
+      arguments: { path: '   ' },
+    })
+
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text: 'Vault path must not be empty. Correct the path field before retrying initialize_vault.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'INVALID_INPUT',
+        retryable: true,
+        recovery: {
+          action: 'correct_arguments',
+          fields: ['path'],
+        },
+      },
+    })
+  })
+
+  it('identifies a missing kind-specific field as input to correct', async () => {
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    const result = await client.callTool({
+      name: 'edit_transaction',
+      arguments: {
+        path: '/vaults/main',
+        transactionId: 1,
+        kind: 'expense',
+        occurredOn: '2026-07-28',
+        amountMinor: 5_000,
+      },
+    })
+
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'accountId is required for this Transaction kind. Correct the accountId field before ' +
+          'retrying edit_transaction.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'INVALID_INPUT',
+        retryable: true,
+        recovery: {
+          action: 'correct_arguments',
+          fields: ['accountId'],
+        },
+      },
     })
   })
 
@@ -1722,5 +2334,11 @@ describe('fin MCP server', () => {
     await Promise.all([client.connect(clientTransport), server.connect(serverTransport)])
 
     return { client, server }
+  }
+
+  function createTemporaryVaultPath(): string {
+    const parentPath = mkdtempSync(join(tmpdir(), 'fin-mcp-test-'))
+    temporaryDirectories.push(parentPath)
+    return join(parentPath, 'vault')
   }
 })

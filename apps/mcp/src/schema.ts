@@ -1,3 +1,4 @@
+import { finErrorCodes } from '@fin/core'
 import { z } from 'zod'
 
 const accountSchema = z.object({
@@ -251,6 +252,36 @@ const agentAppliedSourceSchema = z.enum([
   'confirmed_new',
   'default_full_amount',
 ])
+
+const toolCallMetadataSchema = z.object({
+  tool: z.string().min(1),
+  arguments: z.record(z.string(), z.unknown()),
+})
+
+export const finErrorMetadataSchema = z.object({
+  code: z.enum([...finErrorCodes, 'SYSTEM_FAILURE']),
+  retryable: z.boolean(),
+  recovery: z
+    .union([
+      toolCallMetadataSchema,
+      z.object({
+        steps: z.array(toolCallMetadataSchema).min(1),
+      }),
+      z.object({
+        action: z.literal('correct_arguments'),
+        fields: z.array(z.string().min(1)).min(1),
+      }),
+    ])
+    .optional(),
+  alternative: toolCallMetadataSchema
+    .extend({
+      requiresConfirmation: z.boolean(),
+    })
+    .optional(),
+  retry: toolCallMetadataSchema.optional(),
+})
+
+export type FinErrorMetadata = z.infer<typeof finErrorMetadataSchema>
 
 export const initializeVaultInputSchema = {
   path: z.string().min(1).describe('Local folder to initialize as a Vault'),

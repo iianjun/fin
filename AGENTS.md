@@ -2,6 +2,10 @@
 
 ## Project map
 
+- See [packages/core/AGENTS.md](packages/core/AGENTS.md) for reusable product behavior,
+  persistence, and public core contracts.
+- See [apps/mcp/AGENTS.md](apps/mcp/AGENTS.md) for MCP schemas, tool registration, and response
+  mapping.
 - See [CONTEXT.md](CONTEXT.md) when adding or changing product terminology.
 - See the [implementation tickets](docs/issues/) and [product behavior](docs/product-behavior.md)
   before implementing or changing user-facing behavior.

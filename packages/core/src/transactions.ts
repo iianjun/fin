@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { AccountNature } from './accounts.js'
+import { FinError } from './errors.js'
 import { insertChangeRecord, runMutation } from './persistence.js'
 import { withVaultDatabase } from './vault.js'
 
@@ -74,8 +75,14 @@ export function recordIncomeExpense(
       const account = readAccount(database, accountId)
 
       if (account.archived_at !== null) {
-        throw new Error(
+        throw new FinError(
+          'ENTITY_ARCHIVED',
           `Archived Account ${account.id} ("${account.name}") cannot receive new Transactions`,
+          {
+            entityType: 'account',
+            entityId: account.id,
+            entityName: account.name,
+          },
         )
       }
 
@@ -208,7 +215,10 @@ function readAccount(database: DatabaseSync, accountId: number): AccountRow {
     .get(accountId) as AccountRow | undefined
 
   if (!row) {
-    throw new Error(`Account ${accountId} does not exist`)
+    throw new FinError('ENTITY_NOT_FOUND', `Account ${accountId} does not exist`, {
+      entityType: 'account',
+      entityId: accountId,
+    })
   }
 
   return row
@@ -224,7 +234,10 @@ function readAccountBalance(database: DatabaseSync, accountId: number): number {
     .get(accountId) as { balance_minor: number } | undefined
 
   if (!row) {
-    throw new Error(`Account ${accountId} does not exist`)
+    throw new FinError('ENTITY_NOT_FOUND', `Account ${accountId} does not exist`, {
+      entityType: 'account',
+      entityId: accountId,
+    })
   }
 
   return row.balance_minor
@@ -243,7 +256,14 @@ export function readIncomeExpenseTransactionFromDatabase(
     .get(transactionId) as TransactionRow | undefined
 
   if (!row) {
-    throw new Error(`Income or Expense Transaction ${transactionId} does not exist`)
+    throw new FinError(
+      'ENTITY_NOT_FOUND',
+      `Income or Expense Transaction ${transactionId} does not exist`,
+      {
+        entityType: 'income_expense_transaction',
+        entityId: transactionId,
+      },
+    )
   }
 
   return mapTransactionRow(row)

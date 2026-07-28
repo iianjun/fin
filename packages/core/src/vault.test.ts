@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
-import { initializeVault, openVault } from './index.js'
+import { FinError, initializeVault, openVault } from './index.js'
 
 describe('Vault lifecycle', () => {
   const temporaryDirectories: string[] = []
@@ -58,9 +58,56 @@ describe('Vault lifecycle', () => {
     expect(() => openVault(vaultPath)).toThrow(/not a fin Vault/)
   })
 
+  it('reports a stable error code when a Vault is missing', () => {
+    const vaultPath = createTemporaryVaultPath()
+
+    expectFinError(() => openVault(vaultPath), 'VAULT_NOT_FOUND', { path: vaultPath })
+  })
+
+  it('reports a stable error code when a Vault already exists', () => {
+    const vaultPath = createTemporaryVaultPath()
+    initializeVault(vaultPath)
+
+    expectFinError(() => initializeVault(vaultPath), 'VAULT_ALREADY_EXISTS', { path: vaultPath })
+  })
+
+  it('does not identify an unrelated database as an existing Vault during initialization', () => {
+    const vaultPath = createTemporaryVaultPath()
+    const databasePath = join(vaultPath, 'fin.sqlite')
+    mkdirSync(vaultPath)
+    const database = new DatabaseSync(databasePath)
+    database.exec('CREATE TABLE unrelated_data (value TEXT)')
+    database.close()
+
+    expectFinError(() => initializeVault(vaultPath), 'INTEGRITY_FAILURE', {
+      path: vaultPath,
+      databasePath,
+      reason: 'not_fin_vault',
+    })
+    expect(existsSync(databasePath)).toBe(true)
+  })
+
   function createTemporaryVaultPath(): string {
     const parentPath = mkdtempSync(join(tmpdir(), 'fin-core-test-'))
     temporaryDirectories.push(parentPath)
     return join(parentPath, 'vault')
+  }
+
+  function expectFinError(
+    operation: () => unknown,
+    code: FinError['code'],
+    details: Record<string, unknown>,
+  ): void {
+    try {
+      operation()
+      throw new Error('Expected operation to throw')
+    } catch (error) {
+      expect(error).toBeInstanceOf(FinError)
+
+      if (error instanceof FinError) {
+        expect(error.code).toBe(code)
+        expect(error.details).toEqual(details)
+      }
+    }
   }
 })

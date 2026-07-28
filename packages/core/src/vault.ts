@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { FinError } from './errors.js'
 
 const databaseFileName = 'fin.sqlite'
 const migrationsDirectory = new URL('../migrations/', import.meta.url)
@@ -25,7 +26,11 @@ export function initializeVault(vaultPath: string): VaultState {
   mkdirSync(path, { recursive: true })
 
   if (existsSync(databasePath)) {
-    throw new Error(`Vault already exists at ${path}`)
+    if (!isFinVaultDatabase(databasePath)) {
+      throw createInvalidVaultError(path, databasePath)
+    }
+
+    throw new FinError('VAULT_ALREADY_EXISTS', `Vault already exists at ${path}`, { path })
   }
 
   const database = new DatabaseSync(databasePath)
@@ -58,14 +63,28 @@ export function withVaultDatabase<Result>(
   const databasePath = resolve(path, databaseFileName)
 
   if (!existsSync(databasePath)) {
-    throw new Error(`Vault does not exist at ${path}`)
+    throw new FinError('VAULT_NOT_FOUND', `Vault does not exist at ${path}`, { path })
   }
 
-  const database = new DatabaseSync(databasePath)
+  let database: DatabaseSync
 
   try {
-    if (!hasMigrationsTable(database)) {
-      throw new Error(`Database at ${databasePath} is not a fin Vault`)
+    database = new DatabaseSync(databasePath)
+  } catch {
+    throw createInvalidVaultError(path, databasePath)
+  }
+
+  try {
+    let isFinVault: boolean
+
+    try {
+      isFinVault = hasMigrationsTable(database)
+    } catch {
+      throw createInvalidVaultError(path, databasePath)
+    }
+
+    if (!isFinVault) {
+      throw createInvalidVaultError(path, databasePath)
     }
 
     database.exec('PRAGMA foreign_keys = ON')
@@ -78,7 +97,7 @@ export function withVaultDatabase<Result>(
 
 function resolveVaultPath(vaultPath: string): string {
   if (vaultPath.trim().length === 0) {
-    throw new Error('Vault path must not be empty')
+    throw new FinError('INVALID_INPUT', 'Vault path must not be empty', { fields: ['path'] })
   }
 
   return resolve(vaultPath)
@@ -95,7 +114,14 @@ function applyPendingMigrations(database: DatabaseSync): void {
     database.exec(migration.sql)
 
     if (!readAppliedMigrationVersions(database).has(migration.version)) {
-      throw new Error(`Migration ${migration.version} did not record itself as applied`)
+      throw new FinError(
+        'INTEGRITY_FAILURE',
+        `Migration ${migration.version} did not record itself as applied`,
+        {
+          migrationVersion: migration.version,
+          reason: 'migration_not_recorded',
+        },
+      )
     }
   }
 }
@@ -158,7 +184,11 @@ function readVaultState(database: DatabaseSync, path: string, databasePath: stri
     | undefined
 
   if (!settings) {
-    throw new Error(`Vault settings are missing at ${path}`)
+    throw new FinError('INTEGRITY_FAILURE', `Vault settings are missing at ${path}`, {
+      path,
+      databasePath,
+      reason: 'missing_vault_settings',
+    })
   }
 
   return {
@@ -186,4 +216,25 @@ function readTableCount(database: DatabaseSync, tableName: 'accounts' | 'categor
     count: number
   }
   return row.count
+}
+
+function isFinVaultDatabase(databasePath: string): boolean {
+  let database: DatabaseSync | undefined
+
+  try {
+    database = new DatabaseSync(databasePath)
+    return hasMigrationsTable(database)
+  } catch {
+    return false
+  } finally {
+    database?.close()
+  }
+}
+
+function createInvalidVaultError(path: string, databasePath: string): FinError {
+  return new FinError('INTEGRITY_FAILURE', `Database at ${databasePath} is not a fin Vault`, {
+    path,
+    databasePath,
+    reason: 'not_fin_vault',
+  })
 }

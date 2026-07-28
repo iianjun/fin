@@ -64,6 +64,14 @@ persistence schema.
 - Values inferred by the agent are identified as inferred.
 - Before creating a likely duplicate, the agent reports the matching date, account, kind, amount,
   and memo and asks for confirmation. Confirmed duplicates are allowed.
+- When a requested Vault is missing, the Agent-facing error identifies `initialize_vault` with the
+  same path as the recovery action and identifies the original tool call to retry afterward.
+- When initialization targets an existing fin Vault, the Agent-facing error identifies
+  `open_vault` as the recovery action. Initialization never overwrites an existing non-fin
+  database.
+- Agent-facing domain errors provide a stable code and structured recovery metadata. Integrity and
+  system failures prohibit automatic retry or initialization and direct the Agent to involve the
+  user.
 
 ## Change history
 

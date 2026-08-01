@@ -259,7 +259,7 @@ const toolCallMetadataSchema = z.object({
 })
 
 export const finErrorMetadataSchema = z.object({
-  code: z.enum([...finErrorCodes, 'SYSTEM_FAILURE']),
+  code: z.enum([...finErrorCodes, 'VAULT_NOT_CONFIGURED', 'SYSTEM_FAILURE']),
   retryable: z.boolean(),
   recovery: z
     .union([
@@ -302,7 +302,6 @@ export const vaultStateOutputSchema = {
 }
 
 export const createAccountInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   name: z.string().min(1).describe('Unique Account name'),
   nature: z.enum(['asset', 'liability']).describe('Whether the Account stores money or debt'),
   currency: z.string().min(1).describe('Three-letter currency code such as KRW or USD'),
@@ -313,16 +312,13 @@ export const createAccountOutputSchema = {
   account: accountSchema,
 }
 
-export const listAccountsInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
-}
+export const listAccountsInputSchema = {}
 
 export const listAccountsOutputSchema = {
   accounts: z.array(accountSchema),
 }
 
 export const setDefaultAccountInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   kind: z.enum(['income', 'expense']).describe('Default Account setting to change'),
   accountId: z
     .number()
@@ -340,7 +336,6 @@ export const setDefaultAccountOutputSchema = {
 }
 
 export const updateAccountInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   accountId: z.number().int().positive().describe('Account ID to update'),
   name: z.string().min(1).optional().describe('New unique Account name'),
   nature: z
@@ -355,7 +350,6 @@ export const updateAccountInputSchema = {
 }
 
 export const accountIdInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   accountId: z.number().int().positive().describe('Account ID'),
 }
 
@@ -367,7 +361,6 @@ export const accountMutationOutputSchema = {
 }
 
 export const createCategoryInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   name: z.string().min(1).describe('Category name, unique among siblings'),
   parentId: z
     .number()
@@ -383,16 +376,13 @@ export const createCategoryOutputSchema = {
   category: categorySchema,
 }
 
-export const listCategoriesInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
-}
+export const listCategoriesInputSchema = {}
 
 export const listCategoriesOutputSchema = {
   categories: z.array(categorySchema),
 }
 
 export const updateCategoryInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   categoryId: z.number().int().positive().describe('Category ID to update'),
   name: z.string().min(1).optional().describe('New sibling-unique Category name'),
   parentId: z
@@ -405,7 +395,6 @@ export const updateCategoryInputSchema = {
 }
 
 export const categoryIdInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   categoryId: z.number().int().positive().describe('Category ID'),
 }
 
@@ -417,7 +406,6 @@ export const categoryMutationOutputSchema = {
 }
 
 export const recordIncomeExpenseInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   kind: z.enum(['income', 'expense']).describe('Transaction kind'),
   accountId: z.number().int().positive().describe('Active Account ID'),
   amountMinor: z.number().int().positive().describe('Positive amount in currency minor units'),
@@ -432,16 +420,13 @@ export const recordIncomeExpenseOutputSchema = {
   resultingBalanceMinor: z.number().int(),
 }
 
-export const listIncomeExpenseTransactionsInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
-}
+export const listIncomeExpenseTransactionsInputSchema = {}
 
 export const listIncomeExpenseTransactionsOutputSchema = {
   transactions: z.array(incomeExpenseTransactionSchema),
 }
 
 export const getIncomeExpenseTransactionInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   transactionId: z.number().int().positive().describe('Income or Expense Transaction ID'),
 }
 
@@ -450,7 +435,6 @@ export const getIncomeExpenseTransactionOutputSchema = {
 }
 
 export const setCategoryAssignmentsInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   transactionId: z.number().int().positive().describe('Income or Expense Transaction ID'),
   assignments: z
     .array(
@@ -475,7 +459,6 @@ export const setCategoryAssignmentsOutputSchema = {
 }
 
 export const getTransactionClassificationInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   transactionId: z.number().int().positive().describe('Income or Expense Transaction ID'),
 }
 
@@ -486,7 +469,6 @@ export const getTransactionClassificationOutputSchema = {
 }
 
 export const recordAdjustmentInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   accountId: z.number().int().positive().describe('Active Account ID'),
   occurredOn: z.string().describe('Calendar date in YYYY-MM-DD format'),
   amountMinor: z
@@ -516,7 +498,6 @@ export const recordAdjustmentOutputSchema = {
 }
 
 export const recordTransferInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   sourceAccountId: z.number().int().positive().describe('Active source Account ID'),
   sourceAmountMinor: z.number().int().positive().describe('Actual positive source amount'),
   destinationAccountId: z.number().int().positive().describe('Active destination Account ID'),
@@ -539,7 +520,6 @@ export const recordTransferOutputSchema = {
 }
 
 export const recordRefundInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   accountId: z.number().int().positive().describe('Active Account receiving the Refund'),
   amountMinor: z.number().int().positive().describe('Positive Refund magnitude in minor units'),
   occurredOn: z.string().describe('Calendar date in YYYY-MM-DD format'),
@@ -554,7 +534,6 @@ export const recordRefundInputSchema = {
 }
 
 export const recordTransferFeeInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   accountId: z.number().int().positive().describe('Active Account charged the fee'),
   amountMinor: z.number().int().positive().describe('Positive fee amount in minor units'),
   occurredOn: z.string().describe('Calendar date in YYYY-MM-DD format'),
@@ -571,7 +550,6 @@ export const recordRelatedExpenseOutputSchema = {
 }
 
 export const inspectTransactionRelationsInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   transactionId: z.number().int().positive().describe('Transaction ID to inspect'),
 }
 
@@ -588,7 +566,6 @@ export const inspectTransactionRelationsOutputSchema = {
 }
 
 export const editTransactionInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   transactionId: z.number().int().positive().describe('Transaction ID to edit'),
   kind: z
     .enum(['income', 'expense', 'adjustment', 'transfer'])
@@ -660,7 +637,6 @@ export const editTransactionOutputSchema = {
 }
 
 export const deleteTransactionInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   transactionId: z.number().int().positive().describe('Transaction ID to delete'),
 }
 
@@ -673,7 +649,6 @@ export const deleteTransactionOutputSchema = {
 }
 
 export const listTransactionChangeRecordsInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   transactionId: z.number().int().positive().optional().describe('Optional Transaction ID filter'),
 }
 
@@ -691,7 +666,6 @@ export const listTransactionChangeRecordsOutputSchema = {
 }
 
 export const recreateTransactionInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   deletionChangeRecordId: z
     .number()
     .int()
@@ -708,9 +682,7 @@ export const recreateTransactionOutputSchema = {
   omittedIncomingRelations: z.array(transactionRelationReferenceSchema),
 }
 
-export const queryBalancesInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
-}
+export const queryBalancesInputSchema = {}
 
 export const queryBalancesOutputSchema = {
   accounts: z.array(accountSchema),
@@ -718,7 +690,6 @@ export const queryBalancesOutputSchema = {
 }
 
 export const queryTransactionsInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   dateFrom: z.string().optional().describe('Inclusive start date in YYYY-MM-DD format'),
   dateTo: z.string().optional().describe('Inclusive end date in YYYY-MM-DD format'),
   accountId: z
@@ -741,7 +712,6 @@ export const queryTransactionsOutputSchema = {
 }
 
 export const querySpendingInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   dateFrom: z.string().optional().describe('Inclusive start date in YYYY-MM-DD format'),
   dateTo: z.string().optional().describe('Inclusive end date in YYYY-MM-DD format'),
   accountId: z.number().int().positive().optional().describe('Expense Account ID'),
@@ -777,7 +747,6 @@ export const querySpendingOutputSchema = {
 }
 
 export const recordAgentTransactionInputSchema = {
-  path: z.string().min(1).describe('Local Vault folder'),
   kind: z
     .enum(['income', 'expense'])
     .optional()

@@ -141,6 +141,7 @@ import {
   updateCategoryInputSchema,
   vaultStateOutputSchema,
 } from './schema.js'
+import { FileVaultLocationStore, type VaultLocationStore } from './vault-location.js'
 
 export type VaultOperations = {
   initializeVault: typeof initializeVault
@@ -238,7 +239,20 @@ type ToolConfiguration<
   _meta?: Record<string, unknown>
 }
 
+class VaultNotConfiguredError extends Error {
+  constructor() {
+    super('No fin Vault is selected')
+    this.name = 'VaultNotConfiguredError'
+  }
+}
+
 class FinMcpServer extends McpServer {
+  #vaultLocationStore: VaultLocationStore | undefined
+
+  useVaultLocationStore(vaultLocationStore: VaultLocationStore): void {
+    this.#vaultLocationStore = vaultLocationStore
+  }
+
   override registerTool<
     OutputArgs extends ZodRawShapeCompat | AnySchema,
     InputArgs extends undefined | ZodRawShapeCompat | AnySchema = undefined,
@@ -253,7 +267,9 @@ class FinMcpServer extends McpServer {
       try {
         return await Reflect.apply(callback, undefined, parameters)
       } catch (error) {
-        return validateToolErrorResult(createToolErrorResult(name, argumentsValue, error))
+        return validateToolErrorResult(
+          createToolErrorResult(name, argumentsValue, error, this.#vaultLocationStore?.get()),
+        )
       }
     }) as ToolCallback<InputArgs>
 
@@ -262,10 +278,9 @@ class FinMcpServer extends McpServer {
 }
 
 const finServerInstructions = [
-  'Use the exact Vault path supplied by the user.',
-  'Call open_vault for an existing Vault.',
-  'When a tool reports VAULT_NOT_FOUND and the path is the intended new location, call initialize_vault with the same path, then retry the original tool.',
-  'When the path is uncertain, ask the user instead of creating a Vault.',
+  'fin remembers one selected Vault across server restarts.',
+  'When no Vault is selected, ask the user for a local folder, then call open_vault for an existing Vault or initialize_vault for a new Vault.',
+  'Only initialize a Vault after the user confirms that the path is the intended new location.',
   'Never initialize over an existing non-fin database or overwrite an existing fin.sqlite file.',
   'Do not automatically retry integrity or system failures, and do not use initialize_vault to repair them.',
 ].join(' ')
@@ -304,7 +319,10 @@ const defaultOperations: FinOperations = {
   updateCategory,
 }
 
-export function createFinServer(operationOverrides: Partial<FinOperations> = {}): McpServer {
+export function createFinServer(
+  operationOverrides: Partial<FinOperations> = {},
+  vaultLocationStore: VaultLocationStore = new FileVaultLocationStore(),
+): McpServer {
   const operations = { ...defaultOperations, ...operationOverrides }
   const server = new FinMcpServer(
     {
@@ -315,6 +333,8 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       instructions: finServerInstructions,
     },
   )
+  server.useVaultLocationStore(vaultLocationStore)
+  const vaultPath = (): string => requireVaultPath(vaultLocationStore)
 
   server.registerTool(
     'initialize_vault',
@@ -324,7 +344,11 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: initializeVaultInputSchema,
       outputSchema: vaultStateOutputSchema,
     },
-    ({ path }) => createVaultToolResult('initialized', operations.initializeVault(path)),
+    ({ path }) => {
+      const vault = operations.initializeVault(path)
+      vaultLocationStore.save(vault.path)
+      return createVaultToolResult('initialized', vault)
+    },
   )
 
   server.registerTool(
@@ -335,7 +359,11 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: openVaultInputSchema,
       outputSchema: vaultStateOutputSchema,
     },
-    ({ path }) => createVaultToolResult('opened', operations.openVault(path)),
+    ({ path }) => {
+      const vault = operations.openVault(path)
+      vaultLocationStore.save(vault.path)
+      return createVaultToolResult('opened', vault)
+    },
   )
 
   server.registerTool(
@@ -346,8 +374,8 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: createAccountInputSchema,
       outputSchema: createAccountOutputSchema,
     },
-    ({ path, name, nature, currency }) =>
-      createAccountToolResult(operations.createAccount(path, { name, nature, currency })),
+    ({ name, nature, currency }) =>
+      createAccountToolResult(operations.createAccount(vaultPath(), { name, nature, currency })),
   )
 
   server.registerTool(
@@ -358,7 +386,7 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: listAccountsInputSchema,
       outputSchema: listAccountsOutputSchema,
     },
-    ({ path }) => createListAccountsToolResult(operations.listAccounts(path)),
+    () => createListAccountsToolResult(operations.listAccounts(vaultPath())),
   )
 
   server.registerTool(
@@ -369,8 +397,8 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: setDefaultAccountInputSchema,
       outputSchema: setDefaultAccountOutputSchema,
     },
-    ({ path, kind, accountId }) =>
-      createDefaultAccountToolResult(operations.setDefaultAccount(path, kind, accountId)),
+    ({ kind, accountId }) =>
+      createDefaultAccountToolResult(operations.setDefaultAccount(vaultPath(), kind, accountId)),
   )
 
   server.registerTool(
@@ -382,9 +410,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: updateAccountInputSchema,
       outputSchema: accountMutationOutputSchema,
     },
-    ({ path, accountId, name, nature, currency }) =>
+    ({ accountId, name, nature, currency }) =>
       createAccountMutationToolResult(
-        operations.updateAccount(path, accountId, { name, nature, currency }),
+        operations.updateAccount(vaultPath(), accountId, { name, nature, currency }),
       ),
   )
 
@@ -396,8 +424,8 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: accountIdInputSchema,
       outputSchema: accountMutationOutputSchema,
     },
-    ({ path, accountId }) =>
-      createAccountMutationToolResult(operations.archiveAccount(path, accountId)),
+    ({ accountId }) =>
+      createAccountMutationToolResult(operations.archiveAccount(vaultPath(), accountId)),
   )
 
   server.registerTool(
@@ -408,8 +436,8 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: accountIdInputSchema,
       outputSchema: accountMutationOutputSchema,
     },
-    ({ path, accountId }) =>
-      createAccountMutationToolResult(operations.reactivateAccount(path, accountId)),
+    ({ accountId }) =>
+      createAccountMutationToolResult(operations.reactivateAccount(vaultPath(), accountId)),
   )
 
   server.registerTool(
@@ -420,8 +448,8 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: createCategoryInputSchema,
       outputSchema: createCategoryOutputSchema,
     },
-    ({ path, name, parentId }) =>
-      createCategoryToolResult(operations.createCategory(path, { name, parentId })),
+    ({ name, parentId }) =>
+      createCategoryToolResult(operations.createCategory(vaultPath(), { name, parentId })),
   )
 
   server.registerTool(
@@ -432,7 +460,7 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: listCategoriesInputSchema,
       outputSchema: listCategoriesOutputSchema,
     },
-    ({ path }) => createListCategoriesToolResult(operations.listCategories(path)),
+    () => createListCategoriesToolResult(operations.listCategories(vaultPath())),
   )
 
   server.registerTool(
@@ -443,9 +471,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: updateCategoryInputSchema,
       outputSchema: categoryMutationOutputSchema,
     },
-    ({ path, categoryId, name, parentId }) =>
+    ({ categoryId, name, parentId }) =>
       createCategoryMutationToolResult(
-        operations.updateCategory(path, categoryId, { name, parentId }),
+        operations.updateCategory(vaultPath(), categoryId, { name, parentId }),
       ),
   )
 
@@ -457,8 +485,8 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: categoryIdInputSchema,
       outputSchema: categoryMutationOutputSchema,
     },
-    ({ path, categoryId }) =>
-      createCategoryMutationToolResult(operations.archiveCategory(path, categoryId)),
+    ({ categoryId }) =>
+      createCategoryMutationToolResult(operations.archiveCategory(vaultPath(), categoryId)),
   )
 
   server.registerTool(
@@ -469,8 +497,8 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: categoryIdInputSchema,
       outputSchema: categoryMutationOutputSchema,
     },
-    ({ path, categoryId }) =>
-      createCategoryMutationToolResult(operations.reactivateCategory(path, categoryId)),
+    ({ categoryId }) =>
+      createCategoryMutationToolResult(operations.reactivateCategory(vaultPath(), categoryId)),
   )
 
   server.registerTool(
@@ -482,9 +510,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: recordIncomeExpenseInputSchema,
       outputSchema: recordIncomeExpenseOutputSchema,
     },
-    ({ path, kind, accountId, amountMinor, occurredOn, memo }) =>
+    ({ kind, accountId, amountMinor, occurredOn, memo }) =>
       createRecordIncomeExpenseToolResult(
-        operations.recordIncomeExpense(path, {
+        operations.recordIncomeExpense(vaultPath(), {
           kind,
           accountId,
           amountMinor,
@@ -502,7 +530,7 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: listIncomeExpenseTransactionsInputSchema,
       outputSchema: listIncomeExpenseTransactionsOutputSchema,
     },
-    ({ path }) => createListIncomeExpenseToolResult(operations.listIncomeExpenseTransactions(path)),
+    () => createListIncomeExpenseToolResult(operations.listIncomeExpenseTransactions(vaultPath())),
   )
 
   server.registerTool(
@@ -513,8 +541,10 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: getIncomeExpenseTransactionInputSchema,
       outputSchema: getIncomeExpenseTransactionOutputSchema,
     },
-    ({ path, transactionId }) =>
-      createGetIncomeExpenseToolResult(operations.getIncomeExpenseTransaction(path, transactionId)),
+    ({ transactionId }) =>
+      createGetIncomeExpenseToolResult(
+        operations.getIncomeExpenseTransaction(vaultPath(), transactionId),
+      ),
   )
 
   server.registerTool(
@@ -526,9 +556,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: setCategoryAssignmentsInputSchema,
       outputSchema: setCategoryAssignmentsOutputSchema,
     },
-    ({ path, transactionId, assignments }) =>
+    ({ transactionId, assignments }) =>
       createSetCategoryAssignmentsToolResult(
-        operations.setCategoryAssignments(path, transactionId, assignments),
+        operations.setCategoryAssignments(vaultPath(), transactionId, assignments),
       ),
   )
 
@@ -541,9 +571,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: getTransactionClassificationInputSchema,
       outputSchema: getTransactionClassificationOutputSchema,
     },
-    ({ path, transactionId }) =>
+    ({ transactionId }) =>
       createTransactionClassificationToolResult(
-        operations.getTransactionClassification(path, transactionId),
+        operations.getTransactionClassification(vaultPath(), transactionId),
       ),
   )
 
@@ -556,9 +586,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: recordAdjustmentInputSchema,
       outputSchema: recordAdjustmentOutputSchema,
     },
-    ({ path, accountId, occurredOn, amountMinor, targetBalanceMinor, memo }) =>
+    ({ accountId, occurredOn, amountMinor, targetBalanceMinor, memo }) =>
       createRecordAdjustmentToolResult(
-        operations.recordAdjustment(path, {
+        operations.recordAdjustment(vaultPath(), {
           accountId,
           occurredOn,
           amountMinor,
@@ -578,7 +608,6 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       outputSchema: recordTransferOutputSchema,
     },
     ({
-      path,
       sourceAccountId,
       sourceAmountMinor,
       destinationAccountId,
@@ -587,7 +616,7 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       memo,
     }) =>
       createRecordTransferToolResult(
-        operations.recordTransfer(path, {
+        operations.recordTransfer(vaultPath(), {
           sourceAccountId,
           sourceAmountMinor,
           destinationAccountId,
@@ -607,9 +636,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: recordRefundInputSchema,
       outputSchema: recordRelatedExpenseOutputSchema,
     },
-    ({ path, accountId, amountMinor, occurredOn, memo, originalExpenseId }) =>
+    ({ accountId, amountMinor, occurredOn, memo, originalExpenseId }) =>
       createRecordRefundToolResult(
-        operations.recordRefund(path, {
+        operations.recordRefund(vaultPath(), {
           accountId,
           amountMinor,
           occurredOn,
@@ -627,9 +656,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: recordTransferFeeInputSchema,
       outputSchema: recordRelatedExpenseOutputSchema,
     },
-    ({ path, accountId, amountMinor, occurredOn, memo, transferId }) =>
+    ({ accountId, amountMinor, occurredOn, memo, transferId }) =>
       createRecordTransferFeeToolResult(
-        operations.recordTransferFee(path, {
+        operations.recordTransferFee(vaultPath(), {
           accountId,
           amountMinor,
           occurredOn,
@@ -648,9 +677,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: inspectTransactionRelationsInputSchema,
       outputSchema: inspectTransactionRelationsOutputSchema,
     },
-    ({ path, transactionId }) =>
+    ({ transactionId }) =>
       createTransactionRelationInspectionToolResult(
-        operations.inspectTransactionRelations(path, transactionId),
+        operations.inspectTransactionRelations(vaultPath(), transactionId),
       ),
   )
 
@@ -664,7 +693,6 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       outputSchema: editTransactionOutputSchema,
     },
     ({
-      path,
       transactionId,
       kind,
       occurredOn,
@@ -679,7 +707,7 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       relation,
     }) =>
       createEditTransactionToolResult(
-        operations.editTransaction(path, {
+        operations.editTransaction(vaultPath(), {
           transactionId,
           replacement: createTransactionReplacement({
             kind,
@@ -706,8 +734,8 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: deleteTransactionInputSchema,
       outputSchema: deleteTransactionOutputSchema,
     },
-    ({ path, transactionId }) =>
-      createDeleteTransactionToolResult(operations.deleteTransaction(path, transactionId)),
+    ({ transactionId }) =>
+      createDeleteTransactionToolResult(operations.deleteTransaction(vaultPath(), transactionId)),
   )
 
   server.registerTool(
@@ -719,9 +747,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: listTransactionChangeRecordsInputSchema,
       outputSchema: listTransactionChangeRecordsOutputSchema,
     },
-    ({ path, transactionId }) =>
+    ({ transactionId }) =>
       createListTransactionChangeRecordsToolResult(
-        operations.listTransactionChangeRecords(path, transactionId),
+        operations.listTransactionChangeRecords(vaultPath(), transactionId),
       ),
   )
 
@@ -733,9 +761,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: recreateTransactionInputSchema,
       outputSchema: recreateTransactionOutputSchema,
     },
-    ({ path, deletionChangeRecordId }) =>
+    ({ deletionChangeRecordId }) =>
       createRecreateTransactionToolResult(
-        operations.recreateTransaction(path, deletionChangeRecordId),
+        operations.recreateTransaction(vaultPath(), deletionChangeRecordId),
       ),
   )
 
@@ -748,7 +776,7 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: queryBalancesInputSchema,
       outputSchema: queryBalancesOutputSchema,
     },
-    ({ path }) => createQueryBalancesToolResult(operations.queryBalances(path)),
+    () => createQueryBalancesToolResult(operations.queryBalances(vaultPath())),
   )
 
   server.registerTool(
@@ -760,9 +788,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: queryTransactionsInputSchema,
       outputSchema: queryTransactionsOutputSchema,
     },
-    ({ path, dateFrom, dateTo, accountId, kinds, memoContains }) =>
+    ({ dateFrom, dateTo, accountId, kinds, memoContains }) =>
       createQueryTransactionsToolResult(
-        operations.queryTransactions(path, {
+        operations.queryTransactions(vaultPath(), {
           dateFrom,
           dateTo,
           accountId,
@@ -781,9 +809,9 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       inputSchema: querySpendingInputSchema,
       outputSchema: querySpendingOutputSchema,
     },
-    ({ path, dateFrom, dateTo, accountId, memoContains, categoryId }) =>
+    ({ dateFrom, dateTo, accountId, memoContains, categoryId }) =>
       createQuerySpendingToolResult(
-        operations.querySpending(path, {
+        operations.querySpending(vaultPath(), {
           dateFrom,
           dateTo,
           accountId,
@@ -803,7 +831,6 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       outputSchema: recordAgentTransactionOutputSchema,
     },
     ({
-      path,
       kind,
       accountId,
       accountName,
@@ -818,7 +845,7 @@ export function createFinServer(operationOverrides: Partial<FinOperations> = {})
       confirmDuplicate,
     }) =>
       createAgentTransactionToolResult(
-        operations.recordAgentTransaction(path, {
+        operations.recordAgentTransaction(vaultPath(), {
           kind,
           accountId,
           accountName,
@@ -842,12 +869,33 @@ function createToolErrorResult(
   toolName: string,
   toolArguments: Record<string, unknown>,
   error: unknown,
+  configuredVaultPath: string | undefined,
 ): CallToolResult {
-  if (isFinError(error)) {
-    return createKnownToolErrorResult(toolName, toolArguments, error)
+  if (error instanceof VaultNotConfiguredError) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text:
+            'No fin Vault is selected. Ask the user for a local folder, then call open_vault ' +
+            'for an existing Vault or initialize_vault for a new Vault before retrying this tool.',
+        },
+      ],
+      _meta: {
+        'fin/error': {
+          code: 'VAULT_NOT_CONFIGURED',
+          retryable: true,
+        },
+      },
+    }
   }
 
-  const path = readString(toolArguments.path)
+  if (isFinError(error)) {
+    return createKnownToolErrorResult(toolName, toolArguments, error, configuredVaultPath)
+  }
+
+  const path = readString(toolArguments.path) ?? configuredVaultPath
   const location = path === undefined ? 'the requested location' : `the Vault path ${path}`
 
   return {
@@ -879,8 +927,10 @@ function createKnownToolErrorResult(
   toolName: string,
   toolArguments: Record<string, unknown>,
   error: FinError,
+  configuredVaultPath: string | undefined,
 ): CallToolResult {
-  const path = readString(error.details.path) ?? readString(toolArguments.path)
+  const path =
+    readString(error.details.path) ?? readString(toolArguments.path) ?? configuredVaultPath
   const databasePath = readString(error.details.databasePath)
 
   if (error.code === 'VAULT_NOT_FOUND' && path !== undefined) {
@@ -991,8 +1041,8 @@ function createKnownToolErrorResult(
           {
             type: 'text',
             text:
-              `${error.message}. Call ${recovery.tool} with this Vault path to inspect valid ` +
-              `${recovery.label} IDs before retrying ${toolName}.`,
+              `${error.message}. Call ${recovery.tool} to inspect valid ${recovery.label} IDs ` +
+              `in the selected Vault before retrying ${toolName}.`,
           },
         ],
         _meta: {
@@ -1001,7 +1051,7 @@ function createKnownToolErrorResult(
             retryable: true,
             recovery: {
               tool: recovery.tool,
-              arguments: { path },
+              arguments: {},
             },
             retry: {
               tool: toolName,
@@ -1014,11 +1064,7 @@ function createKnownToolErrorResult(
   }
 
   if (error.code === 'ENTITY_ARCHIVED' && path !== undefined) {
-    const recovery = readArchivedEntityRecovery(
-      error.details.entityType,
-      error.details.entityId,
-      path,
-    )
+    const recovery = readArchivedEntityRecovery(error.details.entityType, error.details.entityId)
 
     if (recovery !== undefined) {
       return {
@@ -1027,8 +1073,8 @@ function createKnownToolErrorResult(
           {
             type: 'text',
             text:
-              `${error.message}. Call ${recovery.listTool} with this Vault path to choose an ` +
-              `active ${recovery.label}. Only call ${recovery.reactivateTool} for ` +
+              `${error.message}. Call ${recovery.listTool} to choose an active ` +
+              `${recovery.label} in the selected Vault. Only call ${recovery.reactivateTool} for ` +
               `${recovery.label} ${recovery.entityId} after the user confirms reactivation, ` +
               `then retry ${toolName}.`,
           },
@@ -1039,7 +1085,7 @@ function createKnownToolErrorResult(
             retryable: true,
             recovery: {
               tool: recovery.listTool,
-              arguments: { path },
+              arguments: {},
             },
             alternative: {
               tool: recovery.reactivateTool,
@@ -1069,7 +1115,6 @@ function createKnownToolErrorResult(
       const steps = defaultKinds.map((kind) => ({
         tool: 'set_default_account',
         arguments: {
-          path,
           kind,
           accountId: null,
         },
@@ -1162,6 +1207,16 @@ function toToolArguments(value: unknown): Record<string, unknown> {
   return {}
 }
 
+function requireVaultPath(vaultLocationStore: VaultLocationStore): string {
+  const path = vaultLocationStore.get()
+
+  if (path === undefined) {
+    throw new VaultNotConfiguredError()
+  }
+
+  return path
+}
+
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
@@ -1212,7 +1267,6 @@ function readEntityRecovery(entityType: unknown): { tool: string; label: string 
 function readArchivedEntityRecovery(
   entityType: unknown,
   entityId: unknown,
-  path: string,
 ):
   | {
       listTool: string
@@ -1230,7 +1284,7 @@ function readArchivedEntityRecovery(
     return {
       listTool: 'list_accounts',
       reactivateTool: 'reactivate_account',
-      reactivateArguments: { path, accountId: entityId },
+      reactivateArguments: { accountId: entityId },
       label: 'Account',
       entityId: entityId as number,
     }
@@ -1240,7 +1294,7 @@ function readArchivedEntityRecovery(
     return {
       listTool: 'list_categories',
       reactivateTool: 'reactivate_category',
-      reactivateArguments: { path, categoryId: entityId },
+      reactivateArguments: { categoryId: entityId },
       label: 'Category',
       entityId: entityId as number,
     }

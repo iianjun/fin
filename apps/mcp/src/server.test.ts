@@ -32,6 +32,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createFinServer, type FinOperations } from './server.js'
+import type { VaultLocationStore } from './vault-location.js'
 
 describe('fin MCP server', () => {
   let client: Client | undefined
@@ -80,6 +81,7 @@ describe('fin MCP server', () => {
       action: 'initialized',
       ...vaultState,
     })
+    expect(connection.selectedVaultPath()).toBe('/vaults/new')
   })
 
   it('opens an existing Vault and returns its current state', async () => {
@@ -116,6 +118,52 @@ describe('fin MCP server', () => {
       action: 'opened',
       ...vaultState,
     })
+    expect(connection.selectedVaultPath()).toBe('/vaults/existing')
+  })
+
+  it('asks the Agent to select a Vault before using financial tools', async () => {
+    const connection = await connectTestClient({}, null)
+    client = connection.client
+    server = connection.server
+
+    const result = await client.callTool({
+      name: 'list_accounts',
+      arguments: {},
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text:
+          'No fin Vault is selected. Ask the user for a local folder, then call open_vault ' +
+          'for an existing Vault or initialize_vault for a new Vault before retrying this tool.',
+      },
+    ])
+    expect(result._meta).toEqual({
+      'fin/error': {
+        code: 'VAULT_NOT_CONFIGURED',
+        retryable: true,
+      },
+    })
+  })
+
+  it('only asks lifecycle tools for a Vault path', async () => {
+    const connection = await connectTestClient({})
+    client = connection.client
+    server = connection.server
+
+    const { tools } = await client.listTools()
+
+    for (const tool of tools) {
+      const properties = (tool.inputSchema.properties ?? {}) as Record<string, unknown>
+
+      if (tool.name === 'initialize_vault' || tool.name === 'open_vault') {
+        expect(properties).toHaveProperty('path')
+      } else {
+        expect(properties).not.toHaveProperty('path')
+      }
+    }
   })
 
   it('tells the Agent to initialize a missing Vault with the same path', async () => {
@@ -153,17 +201,18 @@ describe('fin MCP server', () => {
         },
       },
     })
+    expect(connection.selectedVaultPath()).toBe('/vaults/main')
   })
 
   it('tells the Agent to initialize a missing Vault before retrying a financial tool', async () => {
     const vaultPath = createTemporaryVaultPath()
-    const connection = await connectTestClient({})
+    const connection = await connectTestClient({}, vaultPath)
     client = connection.client
     server = connection.server
 
     const result = await client.callTool({
       name: 'list_accounts',
-      arguments: { path: vaultPath },
+      arguments: {},
     })
 
     expect(result.isError).toBe(true)
@@ -185,7 +234,7 @@ describe('fin MCP server', () => {
         },
         retry: {
           tool: 'list_accounts',
-          arguments: { path: vaultPath },
+          arguments: {},
         },
       },
     })
@@ -234,9 +283,10 @@ describe('fin MCP server', () => {
 
     const instructions = client.getInstructions()
 
-    expect(instructions).toContain('Use the exact Vault path supplied by the user')
-    expect(instructions).toContain('call initialize_vault with the same path')
-    expect(instructions).toContain('ask the user instead of creating a Vault')
+    expect(instructions).toContain('remembers one selected Vault across server restarts')
+    expect(instructions).toContain('ask the user for a local folder')
+    expect(instructions).toContain('open_vault for an existing Vault')
+    expect(instructions).toContain('initialize_vault for a new Vault')
     expect(instructions).toContain('Never initialize over an existing non-fin database')
     expect(instructions).toContain('Do not automatically retry integrity or system failures')
   })
@@ -362,7 +412,6 @@ describe('fin MCP server', () => {
     const result = await client.callTool({
       name: 'update_account',
       arguments: {
-        path: vaultPath,
         accountId: 999,
         name: 'Missing',
       },
@@ -373,8 +422,8 @@ describe('fin MCP server', () => {
       {
         type: 'text',
         text:
-          'Account 999 does not exist. Call list_accounts with this Vault path to inspect valid ' +
-          'Account IDs before retrying update_account.',
+          'Account 999 does not exist. Call list_accounts to inspect valid Account IDs in the ' +
+          'selected Vault before retrying update_account.',
       },
     ])
     expect(result._meta).toEqual({
@@ -383,12 +432,11 @@ describe('fin MCP server', () => {
         retryable: true,
         recovery: {
           tool: 'list_accounts',
-          arguments: { path: vaultPath },
+          arguments: {},
         },
         retry: {
           tool: 'update_account',
           arguments: {
-            path: vaultPath,
             accountId: 999,
             name: 'Missing',
           },
@@ -410,7 +458,6 @@ describe('fin MCP server', () => {
     const result = await client.callTool({
       name: 'update_category',
       arguments: {
-        path: vaultPath,
         categoryId: 999,
         name: 'Missing',
       },
@@ -420,8 +467,8 @@ describe('fin MCP server', () => {
       {
         type: 'text',
         text:
-          'Category 999 does not exist. Call list_categories with this Vault path to inspect ' +
-          'valid Category IDs before retrying update_category.',
+          'Category 999 does not exist. Call list_categories to inspect valid Category IDs in ' +
+          'the selected Vault before retrying update_category.',
       },
     ])
     expect(result._meta).toMatchObject({
@@ -429,7 +476,7 @@ describe('fin MCP server', () => {
         code: 'ENTITY_NOT_FOUND',
         recovery: {
           tool: 'list_categories',
-          arguments: { path: vaultPath },
+          arguments: {},
         },
       },
     })
@@ -448,7 +495,6 @@ describe('fin MCP server', () => {
     const result = await client.callTool({
       name: 'get_income_expense_transaction',
       arguments: {
-        path: vaultPath,
         transactionId: 999,
       },
     })
@@ -458,8 +504,8 @@ describe('fin MCP server', () => {
         type: 'text',
         text:
           'Income or Expense Transaction 999 does not exist. Call ' +
-          'list_income_expense_transactions with this Vault path to inspect valid Income or ' +
-          'Expense Transaction IDs before retrying get_income_expense_transaction.',
+          'list_income_expense_transactions to inspect valid Income or Expense Transaction IDs ' +
+          'in the selected Vault before retrying get_income_expense_transaction.',
       },
     ])
     expect(result._meta).toMatchObject({
@@ -467,7 +513,7 @@ describe('fin MCP server', () => {
         code: 'ENTITY_NOT_FOUND',
         recovery: {
           tool: 'list_income_expense_transactions',
-          arguments: { path: vaultPath },
+          arguments: {},
         },
       },
     })
@@ -486,7 +532,6 @@ describe('fin MCP server', () => {
     const created = await client.callTool({
       name: 'create_account',
       arguments: {
-        path: vaultPath,
         name: 'Daily Cash',
         nature: 'asset',
         currency: 'KRW',
@@ -499,13 +544,12 @@ describe('fin MCP server', () => {
     ).account.id
     await client.callTool({
       name: 'archive_account',
-      arguments: { path: vaultPath, accountId },
+      arguments: { accountId },
     })
 
     const result = await client.callTool({
       name: 'record_income_expense',
       arguments: {
-        path: vaultPath,
         kind: 'expense',
         accountId,
         amountMinor: 5_000,
@@ -518,7 +562,7 @@ describe('fin MCP server', () => {
         type: 'text',
         text:
           `Archived Account ${accountId} ("Daily Cash") cannot receive new Transactions. ` +
-          'Call list_accounts with this Vault path to choose an active Account. Only call ' +
+          'Call list_accounts to choose an active Account in the selected Vault. Only call ' +
           `reactivate_account for Account ${accountId} after the user confirms reactivation, ` +
           'then retry record_income_expense.',
       },
@@ -529,17 +573,16 @@ describe('fin MCP server', () => {
         retryable: true,
         recovery: {
           tool: 'list_accounts',
-          arguments: { path: vaultPath },
+          arguments: {},
         },
         alternative: {
           tool: 'reactivate_account',
-          arguments: { path: vaultPath, accountId },
+          arguments: { accountId },
           requiresConfirmation: true,
         },
         retry: {
           tool: 'record_income_expense',
           arguments: {
-            path: vaultPath,
             kind: 'expense',
             accountId,
             amountMinor: 5_000,
@@ -563,7 +606,6 @@ describe('fin MCP server', () => {
     const created = await client.callTool({
       name: 'create_account',
       arguments: {
-        path: vaultPath,
         name: 'Daily Cash',
         nature: 'asset',
         currency: 'KRW',
@@ -576,12 +618,12 @@ describe('fin MCP server', () => {
     ).account.id
     await client.callTool({
       name: 'set_default_account',
-      arguments: { path: vaultPath, kind: 'income', accountId },
+      arguments: { kind: 'income', accountId },
     })
 
     const result = await client.callTool({
       name: 'archive_account',
-      arguments: { path: vaultPath, accountId },
+      arguments: { accountId },
     })
 
     expect(result.content).toEqual([
@@ -602,7 +644,6 @@ describe('fin MCP server', () => {
             {
               tool: 'set_default_account',
               arguments: {
-                path: vaultPath,
                 kind: 'income',
                 accountId: null,
               },
@@ -611,7 +652,7 @@ describe('fin MCP server', () => {
         },
         retry: {
           tool: 'archive_account',
-          arguments: { path: vaultPath, accountId },
+          arguments: { accountId },
         },
       },
     })
@@ -630,7 +671,6 @@ describe('fin MCP server', () => {
     const result = await client.callTool({
       name: 'create_account',
       arguments: {
-        path: vaultPath,
         name: 'Daily Cash',
         nature: 'asset',
         currency: 'KR',
@@ -693,7 +733,6 @@ describe('fin MCP server', () => {
     const result = await client.callTool({
       name: 'edit_transaction',
       arguments: {
-        path: '/vaults/main',
         transactionId: 1,
         kind: 'expense',
         occurredOn: '2026-07-28',
@@ -736,7 +775,6 @@ describe('fin MCP server', () => {
     const result = await client.callTool({
       name: 'create_account',
       arguments: {
-        path: '/vaults/main',
         name: 'Daily Cash',
         nature: 'asset',
         currency: 'KRW',
@@ -772,7 +810,7 @@ describe('fin MCP server', () => {
 
     const result = await client.callTool({
       name: 'list_accounts',
-      arguments: { path: '/vaults/main' },
+      arguments: {},
     })
 
     expect(result.content).toEqual([
@@ -807,11 +845,11 @@ describe('fin MCP server', () => {
 
     const selected = await client.callTool({
       name: 'set_default_account',
-      arguments: { path: '/vaults/main', kind: 'income', accountId: account.id },
+      arguments: { kind: 'income', accountId: account.id },
     })
     const cleared = await client.callTool({
       name: 'set_default_account',
-      arguments: { path: '/vaults/main', kind: 'income', accountId: null },
+      arguments: { kind: 'income', accountId: null },
     })
 
     expect(requests).toEqual([
@@ -870,7 +908,6 @@ describe('fin MCP server', () => {
     const result = await client.callTool({
       name: 'update_account',
       arguments: {
-        path: '/vaults/main',
         accountId: account.id,
         name: account.name,
         nature: account.nature,
@@ -912,11 +949,11 @@ describe('fin MCP server', () => {
 
     const archiveResult = await client.callTool({
       name: 'archive_account',
-      arguments: { path: '/vaults/main', accountId: activeAccount.id },
+      arguments: { accountId: activeAccount.id },
     })
     const reactivateResult = await client.callTool({
       name: 'reactivate_account',
-      arguments: { path: '/vaults/main', accountId: activeAccount.id },
+      arguments: { accountId: activeAccount.id },
     })
 
     expect(archiveResult.content).toEqual([
@@ -953,14 +990,13 @@ describe('fin MCP server', () => {
     const created = await client.callTool({
       name: 'create_category',
       arguments: {
-        path: '/vaults/main',
         name: 'Dining',
         parentId: 2,
       },
     })
     const listed = await client.callTool({
       name: 'list_categories',
-      arguments: { path: '/vaults/main' },
+      arguments: {},
     })
 
     expect(creations).toEqual([{ name: 'Dining', parentId: 2 }])
@@ -998,7 +1034,6 @@ describe('fin MCP server', () => {
     const result = await client.callTool({
       name: 'update_category',
       arguments: {
-        path: '/vaults/main',
         categoryId: category.id,
         name: category.name,
         parentId: category.parentId,
@@ -1030,11 +1065,11 @@ describe('fin MCP server', () => {
 
     const archiveResult = await client.callTool({
       name: 'archive_category',
-      arguments: { path: '/vaults/main', categoryId: activeCategory.id },
+      arguments: { categoryId: activeCategory.id },
     })
     const reactivateResult = await client.callTool({
       name: 'reactivate_category',
-      arguments: { path: '/vaults/main', categoryId: activeCategory.id },
+      arguments: { categoryId: activeCategory.id },
     })
 
     expect(archiveResult.content).toEqual([
@@ -1085,7 +1120,6 @@ describe('fin MCP server', () => {
     const result = await client.callTool({
       name: 'record_income_expense',
       arguments: {
-        path: '/vaults/main',
         kind: 'expense',
         accountId: 4,
         amountMinor: 30_000,
@@ -1131,11 +1165,11 @@ describe('fin MCP server', () => {
 
     const listed = await client.callTool({
       name: 'list_income_expense_transactions',
-      arguments: { path: '/vaults/main' },
+      arguments: {},
     })
     const inspected = await client.callTool({
       name: 'get_income_expense_transaction',
-      arguments: { path: '/vaults/main', transactionId: transaction.id },
+      arguments: { transactionId: transaction.id },
     })
     const text =
       'Asset Account "Bank" (ID 4, KRW) — Expense Transaction 12, ' +
@@ -1170,7 +1204,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'set_category_assignments',
       arguments: {
-        path: '/vaults/main',
         transactionId: classification.transaction.id,
         assignments: [
           {
@@ -1212,7 +1245,7 @@ describe('fin MCP server', () => {
 
     const response = await client.callTool({
       name: 'get_transaction_classification',
-      arguments: { path: '/vaults/main', transactionId: 12 },
+      arguments: { transactionId: 12 },
     })
 
     expect(response.content).toEqual([
@@ -1261,7 +1294,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'record_adjustment',
       arguments: {
-        path: '/vaults/main',
         accountId: 6,
         occurredOn: '2026-07-27',
         targetBalanceMinor: -500,
@@ -1327,7 +1359,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'record_transfer',
       arguments: {
-        path: '/vaults/main',
         sourceAccountId: 3,
         sourceAmountMinor: 10_000,
         destinationAccountId: 4,
@@ -1400,7 +1431,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'record_refund',
       arguments: {
-        path: '/vaults/main',
         accountId: 4,
         amountMinor: 8_000,
         occurredOn: '2026-07-28',
@@ -1455,7 +1485,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'record_transfer_fee',
       arguments: {
-        path: '/vaults/main',
         accountId: 4,
         amountMinor: 900,
         occurredOn: '2026-07-28',
@@ -1511,7 +1540,7 @@ describe('fin MCP server', () => {
 
     const response = await client.callTool({
       name: 'inspect_transaction_relations',
-      arguments: { path: '/vaults/main', transactionId: 25 },
+      arguments: { transactionId: 25 },
     })
 
     expect(response.content).toEqual([
@@ -1563,7 +1592,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'edit_transaction',
       arguments: {
-        path: '/vaults/main',
         transactionId: 12,
         kind: 'expense',
         accountId: 4,
@@ -1640,7 +1668,7 @@ describe('fin MCP server', () => {
 
     const response = await client.callTool({
       name: 'delete_transaction',
-      arguments: { path: '/vaults/main', transactionId: 12 },
+      arguments: { transactionId: 12 },
     })
 
     expect(response.content).toEqual([
@@ -1677,7 +1705,7 @@ describe('fin MCP server', () => {
 
     const response = await client.callTool({
       name: 'list_transaction_change_records',
-      arguments: { path: '/vaults/main', transactionId: 12 },
+      arguments: { transactionId: 12 },
     })
 
     expect(response.content).toEqual([
@@ -1720,7 +1748,7 @@ describe('fin MCP server', () => {
 
     const response = await client.callTool({
       name: 'recreate_transaction',
-      arguments: { path: '/vaults/main', deletionChangeRecordId: 41 },
+      arguments: { deletionChangeRecordId: 41 },
     })
 
     expect(response.content).toEqual([
@@ -1751,7 +1779,7 @@ describe('fin MCP server', () => {
 
     const response = await client.callTool({
       name: 'query_balances',
-      arguments: { path: '/vaults/main' },
+      arguments: {},
     })
 
     expect(response.content).toEqual([
@@ -1799,7 +1827,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'query_transactions',
       arguments: {
-        path: '/vaults/main',
         dateFrom: '2026-07-27',
         dateTo: '2026-07-28',
         accountId: 4,
@@ -1863,7 +1890,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'query_spending',
       arguments: {
-        path: '/vaults/main',
         memoContains: 'coffee',
         categoryId: 8,
       },
@@ -1913,7 +1939,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'record_agent_transaction',
       arguments: {
-        path: '/vaults/main',
         amountMinor: 5_000,
       },
     })
@@ -1970,7 +1995,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'record_agent_transaction',
       arguments: {
-        path: '/vaults/main',
         kind: 'expense',
         accountId: 4,
         amountMinor: 5_000,
@@ -2048,7 +2072,6 @@ describe('fin MCP server', () => {
     const response = await client.callTool({
       name: 'record_agent_transaction',
       arguments: {
-        path: '/vaults/main',
         kind: 'expense',
         amountMinor: 5_000,
         categoryQuery: 'Food',
@@ -2326,14 +2349,22 @@ describe('fin MCP server', () => {
 
   async function connectTestClient(
     operations: Partial<FinOperations>,
-  ): Promise<{ client: Client; server: McpServer }> {
-    const server = createFinServer(operations)
+    initialVaultPath: string | null = '/vaults/main',
+  ): Promise<{ client: Client; server: McpServer; selectedVaultPath: () => string | undefined }> {
+    let vaultPath = initialVaultPath ?? undefined
+    const vaultLocationStore: VaultLocationStore = {
+      get: () => vaultPath,
+      save: (selectedPath) => {
+        vaultPath = selectedPath
+      },
+    }
+    const server = createFinServer(operations, vaultLocationStore)
     const client = new Client({ name: 'fin-test-client', version: '0.0.0' })
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
 
     await Promise.all([client.connect(clientTransport), server.connect(serverTransport)])
 
-    return { client, server }
+    return { client, server, selectedVaultPath: () => vaultPath }
   }
 
   function createTemporaryVaultPath(): string {

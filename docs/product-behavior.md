@@ -54,6 +54,13 @@ persistence schema.
 
 ## Agent interaction
 
+- The MCP adapter starts without a selected Vault when no remembered selection exists.
+- Successfully initializing or opening a Vault remembers its resolved local folder across MCP
+  server restarts. Failed lifecycle operations do not replace the remembered selection.
+- Tools other than `initialize_vault` and `open_vault` use the remembered Vault and do not accept a
+  Vault path.
+- When no Vault is selected, the Agent asks the user for a local folder and then calls
+  `open_vault` for an existing Vault or `initialize_vault` for a confirmed new location.
 - A missing transaction date defaults to the current local date and is disclosed in the result.
 - A missing account uses the corresponding default income or expense account when available. The
   agent asks when no applicable default exists.
@@ -64,8 +71,9 @@ persistence schema.
 - Values inferred by the agent are identified as inferred.
 - Before creating a likely duplicate, the agent reports the matching date, account, kind, amount,
   and memo and asks for confirmation. Confirmed duplicates are allowed.
-- When a requested Vault is missing, the Agent-facing error identifies `initialize_vault` with the
-  same path as the recovery action and identifies the original tool call to retry afterward.
+- When the selected or requested Vault is missing, the Agent-facing error identifies
+  `initialize_vault` with the same path as the recovery action and identifies the original tool
+  call to retry afterward.
 - When initialization targets an existing fin Vault, the Agent-facing error identifies
   `open_vault` as the recovery action. Initialization never overwrites an existing non-fin
   database.

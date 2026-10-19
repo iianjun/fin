@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+
+engineStrict: true
+savePrefix: ''
+
+allowBuilds:
+  lefthook: true

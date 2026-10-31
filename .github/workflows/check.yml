@@ -35,3 +35,5 @@ jobs:
         run: pnpm build
       - name: Typecheck packages
         run: pnpm typecheck
+      - name: Run contract tests
+        run: pnpm exec vitest run

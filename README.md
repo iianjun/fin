@@ -2,9 +2,8 @@
 
 A personal-finance library with pluggable storage adapters.
 
-The planned initial storage targets are local SQLite and Cloudflare D1, with
-optional MCP integrations. Consumers choose where to run the library and whether
-to expose it through an MCP server.
+Consumers choose where to run the library and whether to expose it through an MCP
+server.
 
 The workspace includes `@fin/provider` for shared financial data types, the
 storage contract, and errors, `@fin/core` for Vault-scoped financial operations,
@@ -50,3 +49,15 @@ This checks formatting with Oxfmt, lints with Oxlint, builds the workspace
 packages, checks types with TypeScript, and runs the SQLite-backed financial and
 storage contract tests. To format files, run `pnpm format`. To build and run only
 the tests, run `pnpm test`. CI runs each check on macOS, Ubuntu, and Windows.
+
+## SQLite example
+
+Run the in-memory example with:
+
+```sh
+pnpm example
+```
+
+It creates a Vault and account, records income and an expense, updates the expense
+memo, and prints a KRW balance and net worth of 7000. The example closes its
+connection when finished.

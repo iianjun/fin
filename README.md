@@ -6,10 +6,10 @@ The planned initial storage targets are local SQLite and Cloudflare D1, with
 optional MCP integrations. Consumers choose where to run the library and whether
 to expose it through an MCP server.
 
-The workspace currently includes `@fin/provider` for shared financial data types,
-the storage contract, and errors, and `@fin/core` for Vault-scoped financial
-operations. Storage adapters will be added separately. Packages are private and
-have not been published to a registry.
+The workspace includes `@fin/provider` for shared financial data types, the
+storage contract, and errors, `@fin/core` for Vault-scoped financial operations,
+and `@fin/sqlite` for local SQLite storage. Cloudflare D1 and MCP integrations
+are planned. Packages are private and have not been published to a registry.
 
 ## Workspace
 
@@ -47,6 +47,6 @@ pnpm check
 ```
 
 This checks formatting with Oxfmt, lints with Oxlint, builds the workspace
-packages, and checks types with TypeScript. To format files, run `pnpm format`.
-CI runs each check on macOS, Ubuntu, and Windows. Runtime tests will be added
-alongside the implementations they exercise.
+packages, checks types with TypeScript, and runs the SQLite-backed financial and
+storage contract tests. To format files, run `pnpm format`. To build and run only
+the tests, run `pnpm test`. CI runs each check on macOS, Ubuntu, and Windows.

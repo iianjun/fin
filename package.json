@@ -6,18 +6,23 @@
   "scripts": {
     "build": "pnpm --filter \"./packages/*\" --fail-if-no-match -r build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "pnpm build && vitest run",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint --deny-warnings .",
-    "check": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck",
+    "check": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && vitest run",
     "prepare": "lefthook install",
     "hooks:check": "lefthook run pre-commit"
   },
   "devDependencies": {
+    "@fin/core": "workspace:*",
+    "@fin/sqlite": "workspace:*",
+    "@types/node": "24.19.2",
     "lefthook": "2.1.10",
     "oxfmt": "0.75.0",
     "oxlint": "1.90.0",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
   },
   "engines": {
     "node": ">=24",

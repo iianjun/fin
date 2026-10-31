@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter './packages/*' -r build",
+    "build": "pnpm --filter \"./packages/*\" --fail-if-no-match -r build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

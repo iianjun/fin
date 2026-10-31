@@ -6,10 +6,10 @@ The planned initial storage targets are local SQLite and Cloudflare D1, with
 optional MCP integrations. Consumers choose where to run the library and whether
 to expose it through an MCP server.
 
-The workspace currently includes `@fin/provider`, a shared package for financial
-data types, the storage contract, and errors. Financial operations and storage
-adapters will be added separately. Packages are private and have not been
-published to a registry.
+The workspace currently includes `@fin/provider` for shared financial data types,
+the storage contract, and errors, and `@fin/core` for Vault-scoped financial
+operations. Storage adapters will be added separately. Packages are private and
+have not been published to a registry.
 
 ## Workspace
 

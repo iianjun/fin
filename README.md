@@ -6,7 +6,10 @@ The planned initial storage targets are local SQLite and Cloudflare D1, with
 optional MCP integrations. Consumers choose where to run the library and whether
 to expose it through an MCP server.
 
-This repository currently contains only the monorepo foundation.
+The workspace currently includes `@fin/provider`, a shared package for financial
+data types, the storage contract, and errors. Financial operations and storage
+adapters will be added separately. Packages are private and have not been
+published to a registry.
 
 ## Workspace
 
@@ -43,8 +46,7 @@ Run the repository checks with:
 pnpm check
 ```
 
-This checks formatting with Oxfmt. To format files, run `pnpm format`.
-
-Oxlint is available through `pnpm lint`. Linting will join `pnpm check` when the
-first JavaScript or TypeScript sources are added. Package type checks, builds,
-and tests will be added alongside the packages they validate.
+This checks formatting with Oxfmt, lints with Oxlint, builds the workspace
+packages, and checks types with TypeScript. To format files, run `pnpm format`.
+CI runs each check on macOS, Ubuntu, and Windows. Runtime tests will be added
+alongside the implementations they exercise.

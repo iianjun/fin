@@ -1,9 +1,10 @@
 # fin
 
-A personal-finance library with pluggable storage adapters and reusable MCP tools.
+A personal-finance library with pluggable storage adapters.
 
-The initial storage targets are local SQLite and Cloudflare D1. Consumers choose
-where to run the library and whether to expose it through an MCP server.
+The planned initial storage targets are local SQLite and Cloudflare D1, with
+optional MCP integrations. Consumers choose where to run the library and whether
+to expose it through an MCP server.
 
 This repository currently contains only the monorepo foundation.
 
@@ -33,3 +34,17 @@ Run the hook manually with:
 ```sh
 pnpm hooks:check
 ```
+
+## Development checks
+
+Run the repository checks with:
+
+```sh
+pnpm check
+```
+
+This checks formatting with Oxfmt. To format files, run `pnpm format`.
+
+Oxlint is available through `pnpm lint`. Linting will join `pnpm check` when the
+first JavaScript or TypeScript sources are added. Package type checks, builds,
+and tests will be added alongside the packages they validate.

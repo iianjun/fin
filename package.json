@@ -4,17 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "pnpm --filter './packages/*' -r build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint --deny-warnings .",
-    "check": "pnpm format:check",
+    "check": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck",
     "prepare": "lefthook install",
     "hooks:check": "lefthook run pre-commit"
   },
   "devDependencies": {
     "lefthook": "2.1.10",
     "oxfmt": "0.75.0",
-    "oxlint": "1.90.0"
+    "oxlint": "1.90.0",
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">=24",

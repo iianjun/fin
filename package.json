@@ -17,9 +17,11 @@
   },
   "devDependencies": {
     "@fin/core": "workspace:*",
+    "@fin/d1": "workspace:*",
     "@fin/sqlite": "workspace:*",
     "@types/node": "24.19.2",
     "lefthook": "2.1.10",
+    "miniflare": "4.20260730.0",
     "oxfmt": "0.75.0",
     "oxlint": "1.90.0",
     "typescript": "7.0.2",

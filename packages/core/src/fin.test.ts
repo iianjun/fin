@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createFin, createVault, listVaults, FinError, type FinStorage } from '@fin/core'
 import { createSqliteAdapter } from '@fin/sqlite'
+import { openD1Fixture } from '../../d1/test/fixture.js'
 
 // Add new real adapter fixtures here; every provider runs the same public financial contract.
 const adapters: {
@@ -16,6 +17,10 @@ const adapters: {
         dispose: storage.close,
       }
     },
+  },
+  {
+    name: 'D1 REST envelope over local D1',
+    open: openD1Fixture,
   },
 ]
 

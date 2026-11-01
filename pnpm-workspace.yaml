@@ -8,3 +8,4 @@ savePrefix: ''
 allowBuilds:
   lefthook: true
   better-sqlite3: true
+  workerd: true

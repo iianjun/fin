@@ -11,7 +11,8 @@
     "format:check": "oxfmt --check .",
     "lint": "oxlint --deny-warnings .",
     "check": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && vitest run",
-    "example": "pnpm build && node apps/sqlite-example/main.mjs",
+    "example": "pnpm build && node apps/example/sqlite.mjs",
+    "example:d1": "pnpm build && node apps/example/d1.mjs",
     "prepare": "lefthook install",
     "hooks:check": "lefthook run pre-commit"
   },

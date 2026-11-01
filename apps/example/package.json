@@ -1,9 +1,10 @@
 {
-  "name": "@fin/sqlite-example",
+  "name": "@fin/example",
   "private": true,
   "type": "module",
   "dependencies": {
     "@fin/core": "workspace:*",
+    "@fin/d1": "workspace:*",
     "@fin/sqlite": "workspace:*"
   }
 }

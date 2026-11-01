@@ -54,6 +54,9 @@ The local fixture emulates the REST envelope around D1; it does not verify the
 remote Cloudflare REST service. To format files, run `pnpm format`. To build and run only
 the tests, run `pnpm test`. CI runs each check on macOS, Ubuntu, and Windows.
 
+Both SQLite and D1 examples live in the single `apps/example` workspace package,
+with `sqlite.mjs` and `d1.mjs` as separate entry points.
+
 ## SQLite example
 
 Run the in-memory example with:
@@ -85,6 +88,17 @@ use unless `autoMigrate: false` is supplied; `await storage.migrate()` explicitl
 prepares the database without creating a logical Vault. D1 has no owned local
 connection to close. Optional `fetch` customization controls HTTP transport; a
 custom transport must not automatically resend writes.
+
+Set `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_D1_DATABASE_ID`, and
+`CLOUDFLARE_API_TOKEN` for an existing test database, then run:
+
+```sh
+pnpm example:d1
+```
+
+The example lists Vaults with automatic migrations disabled. To prepare an empty
+test database explicitly, run `pnpm example:d1 --migrate` first. The adapter does
+not create Cloudflare resources.
 
 Changed state, revisions, the Vault guard, and Change Records are submitted in
 one commit batch. Context reads validate the same generation/stamp before and

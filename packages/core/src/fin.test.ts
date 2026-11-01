@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createFin, createVault, listVaults, FinError, type FinStorage } from '@fin/core'
 import { createSqliteAdapter } from '@fin/sqlite'
+import { openD1Fixture } from '../../d1/test/fixture.js'
 
 // Add new real adapter fixtures here; every provider runs the same public financial contract.
 const adapters: {
@@ -16,6 +17,10 @@ const adapters: {
         dispose: storage.close,
       }
     },
+  },
+  {
+    name: 'D1 REST envelope over local D1',
+    open: openD1Fixture,
   },
 ]
 
@@ -122,35 +127,44 @@ describe.each(adapters)('$name financial contract', ({ open }) => {
       }),
     ).rejects.toMatchObject({ code: 'CONFLICT' })
   })
-  test('commits the maximum classification set atomically and rejects larger sets', async () => {
-    const { fin } = await fixture()
-    const account = (await fin.createAccount({ name: 'Cash', nature: 'asset', currency: 'KRW' }))
-      .account
-    const assignments = []
-    for (let index = 0; index < 32; index++)
-      assignments.push({
-        categoryId: (await fin.createCategory({ name: `Category ${index}` })).category.id,
-        amountMinor: 1,
-        origin: 'explicit' as const,
+  // Creating 32 categories uses sequential public storage calls; workerd IPC on
+  // Windows can exceed the default 5s budget before the classification checks.
+  test(
+    'commits the maximum classification set atomically and rejects larger sets',
+    { timeout: 20_000 },
+    async () => {
+      const { fin } = await fixture()
+      const account = (await fin.createAccount({ name: 'Cash', nature: 'asset', currency: 'KRW' }))
+        .account
+      const assignments = []
+      for (let index = 0; index < 32; index++)
+        assignments.push({
+          categoryId: (await fin.createCategory({ name: `Category ${index}` })).category.id,
+          amountMinor: 1,
+          origin: 'explicit' as const,
+        })
+      const result = await fin.recordIncomeExpense({
+        kind: 'expense',
+        accountId: account.id,
+        amountMinor: 32,
+        assignments,
       })
-    const result = await fin.recordIncomeExpense({
-      kind: 'expense',
-      accountId: account.id,
-      amountMinor: 32,
-      assignments,
-    })
-    expect((await fin.getTransaction({ id: result.transaction.id })).assignments).toHaveLength(32)
-    const before = await fin.listChangeRecords()
-    await expect(
-      fin.setCategoryAssignments({
-        id: result.transaction.id,
-        expectedRevision: result.transaction.revision,
-        assignments: [...assignments, { categoryId: 'extra', amountMinor: 1, origin: 'explicit' }],
-      }),
-    ).rejects.toMatchObject({ code: 'INVALID_INPUT', application: 'not_applied' })
-    expect(await fin.listChangeRecords()).toEqual(before)
-    expect((await fin.getAccount({ id: account.id })).balanceMinor).toBe(-32)
-  })
+      expect((await fin.getTransaction({ id: result.transaction.id })).assignments).toHaveLength(32)
+      const before = await fin.listChangeRecords()
+      await expect(
+        fin.setCategoryAssignments({
+          id: result.transaction.id,
+          expectedRevision: result.transaction.revision,
+          assignments: [
+            ...assignments,
+            { categoryId: 'extra', amountMinor: 1, origin: 'explicit' },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: 'INVALID_INPUT', application: 'not_applied' })
+      expect(await fin.listChangeRecords()).toEqual(before)
+      expect((await fin.getAccount({ id: account.id })).balanceMinor).toBe(-32)
+    },
+  )
   test('uses host calendar dates and persistent defaults without converting explicit dates', async () => {
     const { storage, vault, fin } = await fixture()
     const account = (await fin.createAccount({ name: 'Cash', nature: 'asset', currency: 'KRW' }))

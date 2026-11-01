@@ -1,0 +1,22 @@
+{
+  "name": "@fin/d1",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/adapter.d.ts",
+      "import": "./dist/adapter.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@fin/provider": "workspace:*",
+    "drizzle-orm": "0.45.4"
+  }
+}

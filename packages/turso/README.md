@@ -2,7 +2,11 @@
 
 Provisional `@fin/turso`, targeting Node **24.x** and the **new Turso Database engine**. The package exposes `createTursoAdapter` and its options type. HTTP, ordered streams, schema assets and SQL execution are internal. There is no public transport package/subpath, Turso SDK or libSQL fallback.
 
-**hosted verification pending**. The adapter is implemented, but actual engine SQL, isolation, constraints, routing, expiry and durability remain unverified without a dedicated new-engine endpoint. Local SQLite-backed protocol tests are supplemental adapter/SQL evidence and do not establish Turso support. Track acceptance in [Implement the Turso storage adapter](https://github.com/iianjun/fin/issues/44).
+Actual hosted verification passed on **2026-11-08**, Node **24.18.0**, against a dedicated new-engine TursoDB technical-preview database in **AWS Tokyo**: exact SQL/session feasibility and **30 public financial/tools/storage scenarios**. Evidence, implementation identity and acceptance live in [Implement the Turso storage adapter](https://github.com/iianjun/fin/issues/44). Local SQLite-backed protocol tests remain supplemental and are never substituted for hosted evidence. This is the tested runtime/endpoint scope, not a claim about every deployment, region or runtime.
+
+The service reported `turso_version() = 3.47.0`, `sqlite_version() = 3.50.4` and `sqlite_source_id() = 2026-10-30 12:32:55 f301e7f426e10c6c321a13ed59c7241ca226a915`. These are server-returned values; the SQLite compatibility version and npm packages are not used as engine identity. The dashboard explicitly selected the Turso Rust rewrite. Responses stayed on the configured origin with `base_url: null`; node-switch routing was not exercised.
+
+Separate real-service lifecycle probes observed a transaction alive after 5 seconds idle and invalidated after 15 seconds idle. The invalidated read and write requests returned HTTP 200 with an in-band `SQLITE_BUSY`, a null baton and autocommit true; the adapter rejected them before COMMIT, performed no replay, and independent reads confirmed rollback and no late write. Requests every 3 seconds kept a transaction active beyond 18 seconds. These observations characterize the tested service at that time, not a promised fixed timeout. All run-owned schema objects were independently confirmed absent after cleanup. No crash/failover durability beyond acknowledged commits and the injected lost-acknowledgement gate is claimed.
 
 ```ts
 import { createTursoAdapter } from '@fin/turso'

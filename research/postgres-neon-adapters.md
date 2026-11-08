@@ -1,6 +1,6 @@
 # PostgreSQL and Neon adapters: transaction and driver research
 
-Research for [Map #34](https://github.com/iianjun/fin/issues/34), [ticket #35](https://github.com/iianjun/fin/issues/35). Investigated 2026-11-08 against main `365d21e485586fded76c284e959fee27435d0431`. This is a first-pass decision input, not implementation or runtime validation. No credentials were read, services provisioned, database connections opened, or tests executed.
+Research for [Add PostgreSQL, Neon, Supabase, and Turso storage adapters](https://github.com/iianjun/fin/issues/34), [Research PostgreSQL and Neon transaction and driver guarantees](https://github.com/iianjun/fin/issues/35). Investigated 2026-11-08 against main `365d21e485586fded76c284e959fee27435d0431`. This is a first-pass decision input, not implementation or runtime validation. No credentials were read, services provisioned, database connections opened, or tests executed.
 
 ## Recommendation and alternatives
 

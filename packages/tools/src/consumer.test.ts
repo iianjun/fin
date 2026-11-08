@@ -2,12 +2,13 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { expect, test } from 'vitest'
 
 test('real tarballs install independently with public types and runtime/import isolation', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'fin-consumers-'))
+  // Cover Windows short paths and user directories containing spaces without
+  // depending on metadata cached by a previous package-manager invocation.
+  const root = mkdtempSync(join(tmpdir(), 'fin-consumers~ '))
   const pnpm = process.env.npm_execpath
   if (!pnpm) throw new Error('Run this gate with pnpm exec vitest or pnpm test.')
   // Handles both the native pnpm 12 executable and Node-based pnpm distributions.
@@ -26,7 +27,9 @@ test('real tarballs install independently with public types and runtime/import i
     for (const name of ['provider', 'core', 'sqlite', 'd1', 'tools']) {
       const tarball = join(root, `${name}.tgz`)
       run(['pack', '--out', tarball], resolve('packages', name))
-      overrides[`@fin/${name}`] = pathToFileURL(tarball).href
+      // Relative file paths avoid URL-encoding Windows short paths and spaces.
+      // Every standalone consumer sits directly below the tarballs.
+      overrides[`@fin/${name}`] = `file:../${name}.tgz`
     }
     for (const layout of ['core', 'worker', 'sqlite']) {
       const cwd = join(root, layout)
@@ -52,11 +55,12 @@ test('real tarballs install independently with public types and runtime/import i
         join(cwd, 'pnpm-workspace.yaml'),
         JSON.stringify({
           packages: [],
+          cacheDir: join(root, 'cache'),
           allowBuilds: { 'better-sqlite3': true },
           overrides,
         }),
       )
-      run(['install', '--offline', '--no-frozen-lockfile', '--store-dir', storeDir], cwd)
+      run(['install', '--prefer-offline', '--no-frozen-lockfile', '--store-dir', storeDir], cwd)
       if (layout === 'core') {
         expect(existsSync(join(cwd, 'node_modules/@fin/tools'))).toBe(false)
         writeFileSync(

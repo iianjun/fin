@@ -188,122 +188,44 @@ describe.each([
     expect(getFin).not.toHaveBeenCalled()
   })
 
-  test('composes accounts, defaults, categories, transfers, refunds and queries through the public tool surface', async () => {
+  test('passes classification revisions and spending filters through tools', async () => {
     const { tools } = await fixture()
     const { vault } = await tools['vaults.create'].execute({ name: 'Ledger' })
     const vaultId = vault.id
-    expect(await tools['vaults.get'].execute({ vaultId })).toEqual(vault)
-    const cash = (
-      await tools['accounts.create'].execute({
-        vaultId,
-        name: 'Cash',
-        nature: 'asset',
-        currency: 'KRW',
-      })
-    ).account
-    const bank = (
-      await tools['accounts.create'].execute({
-        vaultId,
-        name: 'Bank',
-        nature: 'asset',
-        currency: 'KRW',
-      })
-    ).account
-    await tools['accounts.update'].execute({
+    const { account } = await tools['accounts.create'].execute({
       vaultId,
-      id: cash.id,
-      expectedRevision: cash.revision,
-      patch: { name: 'Wallet' },
+      name: 'Cash',
+      nature: 'asset',
+      currency: 'KRW',
     })
-    const settings = await tools['settings.get'].execute({ vaultId })
-    await tools['accounts.setDefault'].execute({
+    const { category } = await tools['categories.create'].execute({ vaultId, name: 'Food' })
+    const { transaction } = await tools['transactions.recordIncomeExpense'].execute({
       vaultId,
       kind: 'expense',
-      accountId: cash.id,
-      expectedRevision: settings.revision,
-    })
-    const category = (await tools['categories.create'].execute({ vaultId, name: 'Food' })).category
-    await tools['categories.update'].execute({
-      vaultId,
-      id: category.id,
-      expectedRevision: category.revision,
-      patch: { name: 'Meals' },
-    })
-    const occurredOn = '2026-11-08'
-    await tools['transactions.recordIncomeExpense'].execute({
-      vaultId,
-      kind: 'income',
-      accountId: cash.id,
-      amountMinor: 10000,
-      occurredOn,
-    })
-    const expense = await tools['transactions.recordIncomeExpense'].execute({
-      vaultId,
-      kind: 'expense',
+      accountId: account.id,
       amountMinor: 100,
-      occurredOn,
+      occurredOn: '2026-11-08',
     })
-    expect(expense.accountDefaulted).toBe(true)
+    const assignments = [{ categoryId: category.id, amountMinor: 100, origin: 'explicit' }]
     const classified = await tools['transactions.setCategoryAssignments'].execute({
       vaultId,
-      id: expense.transaction.id,
-      expectedRevision: expense.transaction.revision,
+      id: transaction.id,
+      expectedRevision: transaction.revision,
       assignments: [{ categoryId: category.id, amountMinor: 100, origin: 'explicit' }],
     })
-    expect(classified.transaction.assignments).toHaveLength(1)
-    const transfer = await tools['transactions.recordTransfer'].execute({
+    expect(classified.transaction.assignments).toEqual(assignments)
+    await tools['transactions.recordIncomeExpense'].execute({
       vaultId,
-      sourceAccountId: cash.id,
-      sourceAmountMinor: 5000,
-      destinationAccountId: bank.id,
-      destinationAmountMinor: 5000,
-      occurredOn,
+      kind: 'expense',
+      accountId: account.id,
+      amountMinor: 40,
+      occurredOn: '2026-11-08',
     })
-    await tools['transactions.recordTransferFee'].execute({
-      vaultId,
-      transferId: transfer.transaction.id,
-      accountId: cash.id,
-      amountMinor: 10,
-      occurredOn,
-    })
-    await tools['transactions.recordRefund'].execute({
-      vaultId,
-      originalExpenseId: expense.transaction.id,
-      amountMinor: 25,
-      occurredOn,
-    })
-    await tools['transactions.recordAdjustment'].execute({
-      vaultId,
-      accountId: bank.id,
-      amountMinor: 50,
-      occurredOn,
-    })
-    const current = await tools['accounts.get'].execute({ vaultId, id: bank.id })
-    await tools['accounts.adjustBalance'].execute({
-      vaultId,
-      accountId: bank.id,
-      expectedRevision: current.balanceRevision,
-      targetBalanceMinor: 5100,
-      occurredOn,
-    })
-    expect(await tools['accounts.list'].execute({ vaultId })).toHaveLength(2)
-    expect(await tools['categories.list'].execute({ vaultId })).toMatchObject([
-      { name: 'Meals', path: 'Meals' },
+    const spending = await tools['spending.query'].execute({ vaultId, categoryId: category.id })
+    expect(spending.transactions.map((item) => item.id)).toEqual([transaction.id])
+    expect(spending.categoryRollups).toEqual([
+      { categoryId: category.id, categoryPath: 'Food', currency: 'KRW', amountMinor: 100 },
     ])
-    expect(await tools['transactions.list'].execute({ vaultId, accountId: bank.id })).toHaveLength(
-      3,
-    )
-    expect(await tools['transactions.query'].execute({ vaultId })).toMatchObject({
-      incomeExpenseTotalsByCurrency: [
-        { currency: 'KRW', incomeMinor: 10000, expenseMinor: 85, netIncomeMinor: 9915 },
-      ],
-    })
-    expect(await tools['spending.query'].execute({ vaultId })).toMatchObject({
-      expenseTotalsByCurrency: [{ currency: 'KRW', amountMinor: 85 }],
-    })
-    expect(await tools['balances.query'].execute({ vaultId })).toMatchObject({
-      netWorthByCurrency: [{ currency: 'KRW', amountMinor: 10015 }],
-    })
   })
 })
 

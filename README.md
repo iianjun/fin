@@ -54,9 +54,10 @@ The local fixture emulates the REST envelope around D1; it does not verify the
 remote Cloudflare REST service. The checks also exercise shared tools, exact MCP
 financial errors, a real stdio process, an actual Worker HTTP host with local D1,
 and packed-package installation in independent JavaScript/TypeScript consumers.
-The installation gate uses the pnpm store populated by `pnpm install` and works
-offline. To format files, run `pnpm format`. To build and run only the tests, run
-`pnpm test`. CI runs each check on macOS, Ubuntu, and Windows.
+The installation gate reuses the pnpm store populated by `pnpm install` and can
+fetch registry metadata when its isolated cache is empty. It covers temporary
+paths containing spaces and `~`. To format files, run `pnpm format`. To build and
+run only the tests, run `pnpm test`. CI runs each check on macOS, Ubuntu, and Windows.
 
 Direct-library and MCP examples live in the single `apps/example` workspace package.
 

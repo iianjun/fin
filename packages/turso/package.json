@@ -1,0 +1,26 @@
+{
+  "name": "@fin/turso",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/adapter.d.ts",
+      "import": "./dist/adapter.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@fin/provider": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

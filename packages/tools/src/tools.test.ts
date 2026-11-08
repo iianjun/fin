@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createFin, createVault, listVaults, FinError } from '@fin/core'
 import { createSqliteAdapter } from '@fin/sqlite'
+import { openHostedTursoFixture } from '../../turso/test/hosted-fixture.js'
+import { openTursoFixture } from '../../turso/test/fixture.js'
 import { openD1Fixture } from '../../d1/test/fixture.js'
 import { createFinTools, type FinVaultAccess } from './index.js'
 
@@ -10,6 +12,15 @@ describe.each([
     async open() {
       const storage = createSqliteAdapter({ filename: ':memory:' })
       return { storage, dispose: storage.close }
+    },
+  },
+  {
+    name:
+      process.env.FIN_TURSO_HOSTED === '1'
+        ? 'Turso hosted new engine'
+        : 'Turso over SQLite-backed v3 peer (supplemental)',
+    async open() {
+      return process.env.FIN_TURSO_HOSTED === '1' ? openHostedTursoFixture() : openTursoFixture()
     },
   },
   { name: 'local D1 REST', open: openD1Fixture },

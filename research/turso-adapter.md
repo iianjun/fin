@@ -1,6 +1,6 @@
 # Turso adapter: engine, transport, and transaction evidence
 
-Research for [Map #34](https://github.com/iianjun/fin/issues/34), [ticket #37](https://github.com/iianjun/fin/issues/37). Checked 2026-11-08. This is a focused first-pass feasibility report, not implementation or hosted-service certification. No credentials, provisioning, live database calls, or local repository changes were used.
+Research for [Add PostgreSQL, Neon, Supabase, and Turso storage adapters](https://github.com/iianjun/fin/issues/34), [Research Turso engines and remote transaction guarantees](https://github.com/iianjun/fin/issues/37). Checked 2026-11-08. This is a focused first-pass feasibility report, not implementation or hosted-service certification. No credentials, provisioning, live database calls, or local repository changes were used.
 
 ## Recommendation and tradeoff
 

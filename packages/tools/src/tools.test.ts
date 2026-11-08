@@ -1,3 +1,4 @@
+import { openSupabaseFixture } from '../../supabase/test/fixture.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createFin, createVault, listVaults, FinError } from '@fin/core'
 import { createSqliteAdapter } from '@fin/sqlite'
@@ -15,6 +16,9 @@ describe.each([
   },
   tursoContractTarget,
   { name: 'local D1 REST', open: openD1Fixture },
+  ...(process.env.FIN_SUPABASE_LOCAL === '1' || process.env.FIN_SUPABASE_HOSTED === '1'
+    ? [{ name: 'Supabase real PostgreSQL/PostgREST', open: openSupabaseFixture }]
+    : []),
 ])('$name public tools', ({ open }) => {
   const disposers: (() => void | Promise<void>)[] = []
   afterEach(async () => {

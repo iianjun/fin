@@ -24,6 +24,18 @@ const adapters: {
     name: 'D1 REST envelope over local D1',
     open: openD1Fixture,
   },
+  ...(process.env.FIN_SUPABASE_LOCAL === '1' || process.env.FIN_SUPABASE_HOSTED === '1'
+    ? [
+        {
+          name: 'Supabase real PostgreSQL/PostgREST',
+          // Loaded only when gated so the default run never loads pg or supabase-js.
+          async open() {
+            const { openSupabaseFixture } = await import('../../supabase/test/fixture.js')
+            return openSupabaseFixture()
+          },
+        },
+      ]
+    : []),
 ]
 
 describe.each(adapters)('$name financial contract', ({ open }) => {
@@ -134,7 +146,9 @@ describe.each(adapters)('$name financial contract', ({ open }) => {
   // obscure the classification behavior behind hundreds of remote round trips.
   test(
     'commits the maximum classification set atomically and rejects larger sets',
-    { timeout: hostedTurso ? undefined : 20_000 },
+    {
+      timeout: hostedTurso ? undefined : process.env.FIN_SUPABASE_HOSTED === '1' ? 120_000 : 20_000,
+    },
     async () => {
       const { storage, dispose } = await open()
       disposers.push(dispose)

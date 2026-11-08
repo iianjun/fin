@@ -16,7 +16,9 @@
     "prepare": "lefthook install",
     "hooks:check": "lefthook run pre-commit",
     "build:example:worker": "pnpm build && esbuild apps/example/mcp-worker.mjs --bundle --format=esm --platform=browser --conditions=workerd --outfile=apps/example/dist/mcp-worker.mjs",
-    "test:turso:hosted": "pnpm build && node packages/turso/test/hosted.mjs"
+    "test:turso:hosted": "pnpm build && node packages/turso/test/hosted.mjs",
+    "test:supabase:local": "pnpm build && node packages/supabase/test/verify.mjs local",
+    "test:supabase:hosted": "pnpm build && node packages/supabase/test/verify.mjs hosted"
   },
   "devDependencies": {
     "@fin/core": "workspace:*",
@@ -26,11 +28,13 @@
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/server": "2.4.0",
     "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
     "esbuild": "0.28.2",
     "lefthook": "2.1.10",
     "miniflare": "4.20260730.0",
     "oxfmt": "0.75.0",
     "oxlint": "1.90.0",
+    "pg": "8.23.1",
     "typescript": "7.0.2",
     "vitest": "5.0.5",
     "zod": "4.6.7"

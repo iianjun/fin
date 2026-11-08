@@ -1,3 +1,5 @@
+import { identity as supabaseIdentity } from '../../supabase/src/context.js'
+import { openSupabaseFixture } from '../../supabase/test/fixture.js'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -24,24 +26,24 @@ test('real tarballs install independently with public types and runtime/import i
   const storeDir = dirname(run(['store', 'path'], process.cwd()).trim())
   try {
     const overrides: Record<string, string> = {}
-    for (const name of ['provider', 'core', 'sqlite', 'd1', 'tools', 'turso']) {
+    for (const name of ['provider', 'core', 'sqlite', 'd1', 'tools', 'turso', 'supabase']) {
       const tarball = join(root, `${name}.tgz`)
       run(['pack', '--out', tarball], resolve('packages', name))
       // Relative file paths avoid URL-encoding Windows short paths and spaces.
       // Every standalone consumer sits directly below the tarballs.
       overrides[`@fin/${name}`] = `file:../${name}.tgz`
     }
-    for (const layout of ['core', 'worker', 'sqlite', 'turso']) {
+    for (const layout of ['core', 'worker', 'sqlite', 'turso', 'supabase']) {
       const cwd = join(root, layout)
       mkdirSync(cwd)
       const dependencies: Record<string, string> =
-        layout === 'turso'
+        layout === 'turso' || layout === 'supabase'
           ? {
-              '@fin/turso': overrides['@fin/turso'] ?? '',
+              [`@fin/${layout}`]: overrides[`@fin/${layout}`] ?? '',
               '@fin/core': overrides['@fin/core'] ?? '',
             }
           : { '@fin/core': overrides['@fin/core'] ?? '' }
-      if (layout !== 'core' && layout !== 'turso') {
+      if (layout !== 'core' && layout !== 'turso' && layout !== 'supabase') {
         dependencies['@fin/tools'] = overrides['@fin/tools'] ?? ''
         dependencies[`@fin/${layout === 'worker' ? 'd1' : 'sqlite'}`] =
           overrides[`@fin/${layout === 'worker' ? 'd1' : 'sqlite'}`] ?? ''
@@ -67,7 +69,55 @@ test('real tarballs install independently with public types and runtime/import i
         }),
       )
       run(['install', '--prefer-offline', '--no-frozen-lockfile', '--store-dir', storeDir], cwd)
-      if (layout === 'turso') {
+      if (layout === 'supabase') {
+        for (const name of [
+          '@fin/sqlite',
+          '@fin/d1',
+          '@fin/turso',
+          '@fin/tools',
+          'better-sqlite3',
+          'drizzle-orm',
+          'pg',
+          '@modelcontextprotocol/server',
+        ])
+          expect(existsSync(join(cwd, 'node_modules', name))).toBe(false)
+        expect(existsSync(join(cwd, 'node_modules/@fin/supabase/sql/001.sql'))).toBe(true)
+        writeFileSync(
+          join(cwd, 'consumer.mjs'),
+          `
+          import {strict as assert} from 'node:assert';
+          import {createSupabaseAdapter} from '@fin/supabase';
+          import {createFin,createVault} from '@fin/core';
+          let calls=0, vault=null, settings=null, stamp=0;
+          const real=!!process.env.FIN_PACKED_SUPABASE_URL;
+          const transport=async(input,init)=>{
+            calls++; assert.equal(init.redirect,'manual');
+            if(real){
+              const headers=new Headers(init.headers);
+              if(process.env.FIN_PACKED_SUPABASE_JWT) headers.set('Authorization','Bearer '+process.env.FIN_PACKED_SUPABASE_JWT);
+              let path=new URL(input).pathname;
+              if(process.env.FIN_PACKED_SUPABASE_NAMESPACE) path=path.replace(/fin_supabase_(check_schema|context|commit)$/,process.env.FIN_PACKED_SUPABASE_NAMESPACE+'_$1');
+              else path=path.replace('/rest/v1','');
+              return fetch(process.env.FIN_PACKED_SUPABASE_URL+path,{...init,headers});
+            }
+            const body=JSON.parse(init.body), name=new URL(input).pathname.split('/').pop();
+            const identity='FIN_SUPABASE_IDENTITY';
+            if(name==='fin_supabase_check_schema')return Response.json({identity});
+            if(name==='fin_supabase_context') return Response.json({identity,nonce:body.p_nonce,kind:body.p_request.kind,vaultId:body.p_request.vaultId??null,guard:vault?{generation:'g',stamp:String(stamp)}:null,counts:{vaults:0,accounts:0,categories:0,transactions:0,records:0},context:{vault,settings,vaults:[],accounts:[],categories:[],transactions:[],records:[]}});
+            vault=body.p_changes.vault??vault;settings=body.p_changes.settings??settings;stamp++;
+            return Response.json({identity,nonce:body.p_nonce,vaultId:vault.id,recordId:body.p_record.id,generation:body.p_guard.generation,stamp:String(stamp)});
+          };
+          const storage=createSupabaseAdapter({url:process.env.FIN_PACKED_SUPABASE_URL??'https://unused.invalid',apiKey:process.env.SUPABASE_TEST_SECRET_KEY??'sb_secret_test',fetch:transport});
+          assert.equal(calls,0);assert.equal('close' in storage,false);assert.equal('migrate' in storage,false);
+          await storage.checkSchema();
+          await assert.rejects(import('@fin/supabase/context'),{code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+          const result=await createVault({storage,name:'Installed'});
+          const fin=createFin({storage,vaultId:result.vault.id});
+          assert.equal((await fin.getVault()).name,'Installed');
+          assert.equal((await fin.updateVault({expectedRevision:result.vault.revision,patch:{name:'Renamed'}})).vault.name,'Renamed');
+        `.replace('FIN_SUPABASE_IDENTITY', supabaseIdentity),
+        )
+      } else if (layout === 'turso') {
         for (const name of [
           '@fin/sqlite',
           '@fin/d1',
@@ -158,8 +208,35 @@ test('real tarballs install independently with public types and runtime/import i
           } finally { await storage.close() }`,
         )
       }
-      execFileSync(process.execPath, ['consumer.mjs'], { cwd, encoding: 'utf8', timeout: 15000 })
-      if (layout !== 'sqlite' && layout !== 'turso') {
+      const actualSupabase =
+        layout === 'supabase' &&
+        (process.env.FIN_SUPABASE_LOCAL === '1' || process.env.FIN_SUPABASE_HOSTED === '1')
+          ? await openSupabaseFixture()
+          : undefined
+      try {
+        execFileSync(process.execPath, ['consumer.mjs'], {
+          cwd,
+          encoding: 'utf8',
+          timeout: 15000,
+          env: {
+            ...process.env,
+            ...(actualSupabase
+              ? {
+                  FIN_PACKED_SUPABASE_URL: actualSupabase.base,
+                  FIN_PACKED_SUPABASE_JWT: actualSupabase.hosted
+                    ? ''
+                    : actualSupabase.token('service_role'),
+                  FIN_PACKED_SUPABASE_NAMESPACE: actualSupabase.hosted
+                    ? actualSupabase.namespace
+                    : '',
+                }
+              : {}),
+          },
+        })
+      } finally {
+        await actualSupabase?.dispose()
+      }
+      if (layout !== 'sqlite' && layout !== 'turso' && layout !== 'supabase') {
         const bundle = await build({
           entryPoints: [join(cwd, 'consumer.mjs')],
           bundle: true,
@@ -183,8 +260,23 @@ test('real tarballs install independently with public types and runtime/import i
           )
       }
       const types =
-        layout === 'turso'
-          ? `import { createTursoAdapter, type TursoAdapterOptions } from '@fin/turso';
+        layout === 'supabase'
+          ? `import {createSupabaseAdapter,type SupabaseAdapterOptions} from '@fin/supabase';
+          import {createFin,type FinStorage} from '@fin/core';
+          const options={url:'https://unused.invalid',apiKey:'sb_secret_test'} satisfies SupabaseAdapterOptions;
+          const storage=createSupabaseAdapter(options);const seam:FinStorage=storage;void seam;
+          const checked:Promise<void>=storage.checkSchema();void checked;
+          const vault:Promise<{id:string}>=createFin({storage,vaultId:'v'}).getVault();void vault;
+          // @ts-expect-error Supabase runtime is check-only, no schema installation.
+          storage.migrate();
+          // @ts-expect-error Stateless HTTP adapter has no empty close API.
+          storage.close();
+          // @ts-expect-error Clients are owned internally.
+          createSupabaseAdapter({client:{}});
+          // @ts-expect-error Internal wire validation is not public.
+          import {readContext} from '@fin/supabase/context';`
+          : layout === 'turso'
+            ? `import { createTursoAdapter, type TursoAdapterOptions } from '@fin/turso';
           import { createFin, type FinStorage } from '@fin/core';
           const options = { url: 'https://unused.invalid', authToken: 'unused', autoMigrate: false } satisfies TursoAdapterOptions;
           const storage = createTursoAdapter(options);
@@ -196,11 +288,11 @@ test('real tarballs install independently with public types and runtime/import i
           createTursoAdapter({client:{}});
           // @ts-expect-error There is no public transport subpath.
           import { TursoTransport } from '@fin/turso/transport';`
-          : layout === 'core'
-            ? `import { createFin, type FinStorage } from '@fin/core';
+            : layout === 'core'
+              ? `import { createFin, type FinStorage } from '@fin/core';
         declare const storage: FinStorage; const fin = createFin({ storage, vaultId: 'opaque' });
         const account: Promise<{ balanceMinor: number }> = fin.getAccount({ id: 'opaque' }); void account;`
-            : `import { createFinTools } from '@fin/tools';
+              : `import { createFinTools } from '@fin/tools';
         const tools = createFinTools({ tools: ['vaults.list', 'accounts.create'] });
         const result: Promise<{ account: { balanceMinor: number } }> = tools['accounts.create'].execute({ vaultId: 'opaque', name: 'Cash', nature: 'asset', currency: 'KRW' }); void result;
         // @ts-expect-error Unselected tool is absent from the public type.

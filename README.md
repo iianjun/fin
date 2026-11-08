@@ -266,5 +266,4 @@ The provisional [Turso adapter](packages/turso/README.md) supplies `createTursoA
 modern secret key for Data API RPCs. An administrator first applies the bundled SQL; runtime only checks
 compatibility and never installs schema. Core decisions remain local and supplied
 state/history commits use a whole-Vault generation/stamp guard. Node 24.x is the
-initial target. **Hosted verification pending**; local PostgreSQL/PostgREST is not
-a hosted Supabase support claim. See [setup, API and verification](packages/supabase/README.md).
+initial target. The [hosted RPC verification](https://github.com/iianjun/fin/issues/43#issuecomment-6721868639) passed on Node 24.18.0 / hosted PostgreSQL 17.11 with isolated SQL/RPC names. See [setup, API and verification](packages/supabase/README.md).

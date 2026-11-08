@@ -1,8 +1,8 @@
 # Supabase adapter (provisional)
 
 `@fin/supabase` implements the existing `FinStorage` contract using the official
-`@supabase/supabase-js 2.119.0` SDK and its Data API `.rpc()` calls. Target: Node **24.x**. **Hosted verification pending**: local PostgreSQL
-and PostgREST tests do not establish Supabase gateway/modern-secret-key support.
+`@supabase/supabase-js 2.119.0` SDK and its Data API `.rpc()` calls. Target: Node **24.x**.
+**Hosted RPC verification passed** on 2026-11-08 with Node 24.18.0 and hosted PostgreSQL 17.11; see the scoped-installation boundary and evidence below.
 No registry release, browser/user-JWT profile, other runtime or concurrent
 same-Vault access through another adapter is promised.
 
@@ -145,6 +145,12 @@ export SUPABASE_TEST_DATABASE_URL='postgresql://administrator:...@test-database/
 pnpm test:supabase:hosted
 ```
 
+For the administrator PostgreSQL connection, use `sslmode=verify-full` and
+`sslrootcert=/absolute/path/to/prod-ca-2021.crt` in the connection URI. Download
+the CA from the project's Database Settings → SSL configuration. This verifies
+both the certificate chain and hostname; the public Data API retains its ordinary
+HTTPS trust configuration. See [Supabase SSL enforcement](https://supabase.com/docs/guides/platform/ssl-enforcement).
+
 The hosted command applies SQL only in per-fixture randomly named private schemas
 and public RPC names, routes the adapter calls to those names, inspects commits
 through independent admin SQL and drops only run-owned assets. Financial values
@@ -159,11 +165,7 @@ not the bundled `fin_supabase` schema and `fin_supabase_*` RPC names verbatim.
 Hosted evidence must state this and does not by itself prove the unmodified asset
 installs and serves through the hosted gateway; unscoped local fixtures apply it unchanged.
 
-Hosted modern-key/gateway/role handling, actual installed RPC access, cache
-readiness and real hosted acknowledgement-loss evidence are mandatory before a
-supported claim. This branch does not have that evidence. Record commands, commit,
-date, exact Node/dependencies, server/endpoint metadata and cleanup in
-[Implement the Supabase storage adapter](https://github.com/iianjun/fin/issues/43).
+The [hosted verification record](https://github.com/iianjun/fin/issues/43#issuecomment-6721868639) reports 148 passing tests on implementation `69d47ff`: 31 real hosted conformance checks, 14 Supabase financial-contract scenarios, 4 Supabase tool scenarios, an actual hosted packed-package consumer, deterministic SDK checks and existing adapter regressions. It covers modern-key/gateway/RPC access, cache readiness and real commit acknowledgement loss with independent SQL inspection. An independent dashboard query confirmed zero remaining run-owned schemas, RPCs and host-data tables. The record names the tested versions, commands, installation renaming and cleanup scope; it does not establish other runtime versions or unchanged-name hosted deployment. Remote PR CI is a separate delivery check.
 Relevant transport/SQL/concurrency/schema/dependency changes invalidate earlier
 evidence for the affected behavior.
 

@@ -31,10 +31,23 @@ UNION ALL SELECT c.vaultId,c.id,c.revision,c.name,c.parentId,c.archived,g.name |
   .filter(Boolean)
 const identity =
   'fin-turso-v1:' + createHash('sha256').update(JSON.stringify(statements)).digest('hex')
+// Turso reprints catalog DDL (for example CHECK (...) and comma spacing).
+// Compare lexical tokens rather than bytes: whitespace between tokens is cosmetic,
+// but literal contents, names, operators, comments and token boundaries are not.
+// This is deliberately an identity check for our bundled DDL, not a SQL parser or
+// a general claim that differently spelled SQL has the same semantics.
+function schemaTokens(sql: string): string {
+  return JSON.stringify(
+    sql.match(
+      /'(?:''|[^'])*'|"(?:""|[^"])*"|`(?:``|[^`])*`|\[[^\]]*\]|--[^\r\n]*|\/\*[\s\S]*?\*\/|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_][A-Za-z_0-9]*|->>|->|\|\||<>|<=|>=|!=|==|[^\s]/g,
+    ) ?? [],
+  )
+}
+
 const assets = statements.map((sql) => {
   const match = /^CREATE (?:UNIQUE )?(TABLE|INDEX|VIEW) (fin_\w+)/.exec(sql)
   if (!match?.[1] || !match[2]) throw new Error('Invalid bundled Turso migration')
-  return { name: match[2], type: match[1].toLowerCase(), sql }
+  return { name: match[2], type: match[1].toLowerCase(), tokens: schemaTokens(sql) }
 })
 
 // Run inside the operation's IMMEDIATE transaction. Inspect identity AND actual
@@ -75,7 +88,13 @@ export async function prepareSchema(tx: OperationSession, allowCreate: boolean):
       throw incompatible
     for (const row of objects.rows) {
       const asset = assets.find((a) => a.name === row[0])
-      if (!asset || row[1] !== asset.type || row[2] !== asset.sql) throw incompatible
+      if (
+        !asset ||
+        row[1] !== asset.type ||
+        typeof row[2] !== 'string' ||
+        schemaTokens(row[2]) !== asset.tokens
+      )
+        throw incompatible
     }
   }
   const ledger = await tx.execute('SELECT version,identity FROM fin_migrations')

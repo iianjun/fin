@@ -79,6 +79,70 @@ test.each(['version', 'identity', 'partial', 'unknown', 'view', 'index', 'trigge
   },
 )
 
+test('accepts real Turso catalog whitespace formatting while preserving schema identity', async () => {
+  const f = await fixture()
+  const storage = f.client({
+    fetch: async (input, init) => {
+      const response = await f.fetch(input, init)
+      if (!String(init?.body).includes('FROM sqlite_schema')) return response
+      const body = await response.json()
+      for (const row of body.results[0].response.result.rows) {
+        const value = row[2]
+        if (value.type !== 'text') continue
+        // Captured formatting differences from the actual hosted new engine.
+        value.value = value.value
+          .replaceAll('CHECK(', 'CHECK (')
+          .replaceAll('PRIMARY KEY(', 'PRIMARY KEY (')
+          .replaceAll('UNIQUE(', 'UNIQUE (')
+          .replaceAll('fin_vaults(id)', 'fin_vaults (id)')
+          .replaceAll('vaultId,id', 'vaultId, id')
+          .replaceAll('\n', ' ')
+      }
+      return Response.json(body)
+    },
+  })
+  await storage.migrate()
+  expect(await listVaults({ storage })).toEqual([f.vault])
+  const fin = createFin({ storage, vaultId: f.vault.id })
+  const account = (await fin.createAccount({ name: 'Cash', nature: 'asset', currency: 'KRW' }))
+    .account
+  expect(await fin.getAccount({ id: account.id })).toEqual(account)
+})
+
+test.each([
+  'literal-whitespace',
+  'word-boundary',
+  'operator-boundary',
+  'numeric-constraint',
+  'comment',
+])('catalog formatting tolerance still rejects %s changes', async (fault) => {
+  const f = await fixture()
+  const storage = f.client({
+    fetch: async (input, init) => {
+      const response = await f.fetch(input, init)
+      if (!String(init?.body).includes('FROM sqlite_schema')) return response
+      const body = await response.json()
+      for (const row of body.results[0].response.result.rows) {
+        const value = row[2]
+        if (value.type !== 'text') continue
+        if (fault === 'literal-whitespace') value.value = value.value.replaceAll("' / '", "'  /  '")
+        if (fault === 'word-boundary')
+          value.value = value.value.replaceAll('PRIMARY KEY', 'PRIMARYKEY')
+        if (fault === 'operator-boundary') value.value = value.value.replaceAll('||', '| |')
+        if (fault === 'numeric-constraint')
+          value.value = value.value.replaceAll('9007199254740991', '9007199254740990')
+        if (fault === 'comment')
+          value.value = value.value.replaceAll('NOT NULL', 'NOT /*changed*/ NULL')
+      }
+      return Response.json(body)
+    },
+  })
+  await expect(storage.read({ kind: 'vaults' })).rejects.toMatchObject({
+    code: 'SCHEMA_INCOMPATIBLE',
+  })
+  expect(await listVaults({ storage: f.storage })).toEqual([f.vault])
+})
+
 test('partial initial migration rolls back and can subsequently prepare normally', async () => {
   const f = openTursoFixture()
   fixtures.push(f)

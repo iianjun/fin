@@ -112,7 +112,9 @@ class D1Adapter implements FinStorage {
         headers: { Authorization: `Bearer ${this.#token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ batch }),
         signal: AbortSignal.timeout(30_000),
-        redirect: 'error',
+        // Workers supports manual/follow only. Never follow a redirect that
+        // could replay a financial write or forward its credentials.
+        redirect: 'manual',
       })
       body = await response.json()
     } catch {

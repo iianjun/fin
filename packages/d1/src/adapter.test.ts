@@ -21,6 +21,39 @@ test('constructs from connection options without I/O and prepares local D1 on fi
     'https://api.cloudflare.com/client/v4/accounts/test-account/d1/database/test-database/raw',
   )
   expect(new Headers(first?.[1]?.headers).get('Authorization')).toBe('Bearer test-token')
+  expect(first?.[1]?.redirect).toBe('manual')
+})
+
+test('does not follow redirects or replay a submitted write', async () => {
+  const fixture = await openD1Fixture()
+  disposers.push(fixture.dispose)
+  await fixture.storage.migrate()
+  const { vault } = await createVault({ storage: fixture.storage, name: 'Redirect test' })
+  let submitted = 0
+  const storage = createD1Adapter({
+    ...fixture.options,
+    autoMigrate: false,
+    async fetch(input, init) {
+      const body = String(init?.body)
+      if (body.includes('INSERT INTO fin_commit_guards')) {
+        submitted++
+        expect(init?.redirect).toBe('manual')
+        return new Response(null, {
+          status: 307,
+          headers: { Location: 'https://unexpected.invalid' },
+        })
+      }
+      return fixture.options.fetch(input, init)
+    },
+  })
+  const fin = createFin({ storage, vaultId: vault.id })
+  await expect(
+    fin.createAccount({ name: 'Not confirmed', nature: 'asset', currency: 'KRW' }),
+  ).rejects.toMatchObject({ code: 'OUTCOME_UNKNOWN', application: 'unknown' })
+  expect(submitted).toBe(1)
+  expect(await createFin({ storage: fixture.storage, vaultId: vault.id }).listAccounts()).toEqual(
+    [],
+  )
 })
 
 test('rejects empty connection options without opening a network connection', () => {

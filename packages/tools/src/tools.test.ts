@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createFin, createVault, listVaults, FinError } from '@fin/core'
 import { createSqliteAdapter } from '@fin/sqlite'
+import { tursoContractTarget } from '../../turso/test/hosted-fixture.js'
 import { openD1Fixture } from '../../d1/test/fixture.js'
 import { createFinTools, type FinVaultAccess } from './index.js'
 
@@ -12,6 +13,7 @@ describe.each([
       return { storage, dispose: storage.close }
     },
   },
+  tursoContractTarget,
   { name: 'local D1 REST', open: openD1Fixture },
 ])('$name public tools', ({ open }) => {
   const disposers: (() => void | Promise<void>)[] = []

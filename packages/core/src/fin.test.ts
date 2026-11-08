@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createFin, createVault, listVaults, FinError, type FinStorage } from '@fin/core'
 import { createSqliteAdapter } from '@fin/sqlite'
+import { hostedTurso, tursoContractTarget } from '../../turso/test/hosted-fixture.js'
 import { openD1Fixture } from '../../d1/test/fixture.js'
 
 // Add new real adapter fixtures here; every provider runs the same public financial contract.
@@ -18,6 +19,7 @@ const adapters: {
       }
     },
   },
+  tursoContractTarget,
   {
     name: 'D1 REST envelope over local D1',
     open: openD1Fixture,
@@ -127,22 +129,63 @@ describe.each(adapters)('$name financial contract', ({ open }) => {
       }),
     ).rejects.toMatchObject({ code: 'CONFLICT' })
   })
-  // Creating 32 categories uses sequential public storage calls; workerd IPC on
-  // Windows can exceed the default 5s budget before the classification checks.
+  // This boundary test provisions its catalog atomically through the real storage
+  // seam. Public category creation is covered separately; 32 setup transactions
+  // obscure the classification behavior behind hundreds of remote round trips.
   test(
     'commits the maximum classification set atomically and rejects larger sets',
-    { timeout: 20_000 },
+    { timeout: hostedTurso ? undefined : 20_000 },
     async () => {
-      const { fin } = await fixture()
+      const { storage, dispose } = await open()
+      disposers.push(dispose)
+      const vault = {
+        id: crypto.randomUUID(),
+        name: 'Classification boundary',
+        revision: crypto.randomUUID(),
+        archived: false,
+      }
+      const categories = Array.from({ length: 32 }, (_, index) => ({
+        id: crypto.randomUUID(),
+        revision: crypto.randomUUID(),
+        name: `Category ${index}`,
+        path: `Category ${index}`,
+        parentId: null,
+        archived: false,
+      }))
+      const settings = {
+        revision: crypto.randomUUID(),
+        incomeAccountId: null,
+        expenseAccountId: null,
+      }
+      const record = {
+        id: crypto.randomUUID(),
+        vaultId: vault.id,
+        target: 'vault',
+        targetId: vault.id,
+        action: 'created',
+        recordedAt: new Date().toISOString(),
+        before: null,
+        after: vault,
+        balances: [],
+      } satisfies import('@fin/core').ChangeRecord
+      await storage.mutate({ kind: 'createVault' }, () => ({
+        kind: 'changed',
+        changes: {
+          vault,
+          settings,
+          categories,
+        },
+        record,
+        result: vault,
+      }))
+      const fin = createFin({ storage, vaultId: vault.id })
       const account = (await fin.createAccount({ name: 'Cash', nature: 'asset', currency: 'KRW' }))
         .account
-      const assignments = []
-      for (let index = 0; index < 32; index++)
-        assignments.push({
-          categoryId: (await fin.createCategory({ name: `Category ${index}` })).category.id,
-          amountMinor: 1,
-          origin: 'explicit' as const,
-        })
+      const assignments = categories.map((category) => ({
+        categoryId: category.id,
+        amountMinor: 1,
+        origin: 'explicit' as const,
+      }))
       const result = await fin.recordIncomeExpense({
         kind: 'expense',
         accountId: account.id,

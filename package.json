@@ -15,7 +15,8 @@
     "example:d1": "pnpm build && node apps/example/d1.mjs",
     "prepare": "lefthook install",
     "hooks:check": "lefthook run pre-commit",
-    "build:example:worker": "pnpm build && esbuild apps/example/mcp-worker.mjs --bundle --format=esm --platform=browser --conditions=workerd --outfile=apps/example/dist/mcp-worker.mjs"
+    "build:example:worker": "pnpm build && esbuild apps/example/mcp-worker.mjs --bundle --format=esm --platform=browser --conditions=workerd --outfile=apps/example/dist/mcp-worker.mjs",
+    "test:turso:hosted": "pnpm build && node packages/turso/test/hosted.mjs"
   },
   "devDependencies": {
     "@fin/core": "workspace:*",

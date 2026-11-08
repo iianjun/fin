@@ -24,18 +24,24 @@ test('real tarballs install independently with public types and runtime/import i
   const storeDir = dirname(run(['store', 'path'], process.cwd()).trim())
   try {
     const overrides: Record<string, string> = {}
-    for (const name of ['provider', 'core', 'sqlite', 'd1', 'tools']) {
+    for (const name of ['provider', 'core', 'sqlite', 'd1', 'tools', 'turso']) {
       const tarball = join(root, `${name}.tgz`)
       run(['pack', '--out', tarball], resolve('packages', name))
       // Relative file paths avoid URL-encoding Windows short paths and spaces.
       // Every standalone consumer sits directly below the tarballs.
       overrides[`@fin/${name}`] = `file:../${name}.tgz`
     }
-    for (const layout of ['core', 'worker', 'sqlite']) {
+    for (const layout of ['core', 'worker', 'sqlite', 'turso']) {
       const cwd = join(root, layout)
       mkdirSync(cwd)
-      const dependencies: Record<string, string> = { '@fin/core': overrides['@fin/core'] ?? '' }
-      if (layout !== 'core') {
+      const dependencies: Record<string, string> =
+        layout === 'turso'
+          ? {
+              '@fin/turso': overrides['@fin/turso'] ?? '',
+              '@fin/core': overrides['@fin/core'] ?? '',
+            }
+          : { '@fin/core': overrides['@fin/core'] ?? '' }
+      if (layout !== 'core' && layout !== 'turso') {
         dependencies['@fin/tools'] = overrides['@fin/tools'] ?? ''
         dependencies[`@fin/${layout === 'worker' ? 'd1' : 'sqlite'}`] =
           overrides[`@fin/${layout === 'worker' ? 'd1' : 'sqlite'}`] ?? ''
@@ -61,7 +67,57 @@ test('real tarballs install independently with public types and runtime/import i
         }),
       )
       run(['install', '--prefer-offline', '--no-frozen-lockfile', '--store-dir', storeDir], cwd)
-      if (layout === 'core') {
+      if (layout === 'turso') {
+        for (const name of [
+          '@fin/sqlite',
+          '@fin/d1',
+          '@fin/tools',
+          'better-sqlite3',
+          'drizzle-orm',
+          '@modelcontextprotocol/server',
+        ])
+          expect(existsSync(join(cwd, 'node_modules', name))).toBe(false)
+        writeFileSync(
+          join(cwd, 'consumer.mjs'),
+          `
+          import { strict as assert } from 'node:assert';
+          import { DatabaseSync } from 'node:sqlite';
+          import { createTursoAdapter } from '@fin/turso';
+          import { createFin, createVault, listVaults } from '@fin/core';
+          const db = new DatabaseSync(':memory:');
+          let calls = 0;
+          const storage = createTursoAdapter({ url: 'https://not-contacted.invalid', authToken: 'unused', fetch: async (_, init) => {
+            calls++; assert.equal(init.redirect, 'manual');
+            const { requests } = JSON.parse(init.body);
+            const results = requests.map(r => {
+              if (r.type === 'get_autocommit') return {type:'ok',response:{type:r.type,is_autocommit:!db.isTransaction}};
+              if (r.type === 'close') { if(db.isTransaction) db.exec('ROLLBACK'); return {type:'ok',response:{type:r.type}}; }
+              const stmt = db.prepare(r.stmt.sql); stmt.setReadBigInts(true);
+              const cols = stmt.columns().map(c=>({name:c.name,decltype:c.type}));
+              const args = (r.stmt.args ?? []).map(v=>v.type==='null'?null:v.type==='integer'?BigInt(v.value):v.value);
+              let rows=[], affected=0, rowid=null;
+              if (cols.length) rows=stmt.all(...args).map(row=>cols.map(c=>{
+                const v=row[c.name]; return v===null?{type:'null'}:typeof v==='bigint'?{type:'integer',value:String(v)}:{type:typeof v==='string'?'text':'float',value:v};
+              }));
+              else { const info=stmt.run(...args); if(/^(INSERT|UPDATE|DELETE)/.test(r.stmt.sql)){affected=Number(info.changes);rowid=String(info.lastInsertRowid);} }
+              return {type:'ok',response:{type:r.type,result:{cols,rows,affected_row_count:affected,last_insert_rowid:rowid,rows_read:rows.length,rows_written:affected,query_duration_ms:0}}};
+            });
+            return Response.json({baton:requests[0].type==='close'?null:'owned',base_url:null,results});
+          } });
+          assert.equal(calls, 0);
+          await assert.rejects(import('@fin/turso/transport'), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+          try {
+            await storage.migrate();
+            const { vault } = await createVault({ storage, name:'Installed' });
+            const fin = createFin({ storage, vaultId:vault.id });
+            const { account } = await fin.createAccount({name:'Cash',nature:'asset',currency:'KRW'});
+            const {transaction} = await fin.recordIncomeExpense({kind:'income',accountId:account.id,amountMinor:123,memo:'한글\\u0000🙂'});
+            assert.equal((await fin.getAccount({id:account.id})).balanceMinor,123);
+            assert.equal((await fin.listChangeRecords({targetId:transaction.id}))[0].after.transaction.id,transaction.id);
+            assert.deepEqual(await listVaults({storage}),[vault]);
+          } finally { await storage.close(); db.close(); }`,
+        )
+      } else if (layout === 'core') {
         expect(existsSync(join(cwd, 'node_modules/@fin/tools'))).toBe(false)
         writeFileSync(
           join(cwd, 'consumer.mjs'),
@@ -101,7 +157,7 @@ test('real tarballs install independently with public types and runtime/import i
         )
       }
       execFileSync(process.execPath, ['consumer.mjs'], { cwd, encoding: 'utf8', timeout: 15000 })
-      if (layout !== 'sqlite') {
+      if (layout !== 'sqlite' && layout !== 'turso') {
         const bundle = await build({
           entryPoints: [join(cwd, 'consumer.mjs')],
           bundle: true,
@@ -125,11 +181,24 @@ test('real tarballs install independently with public types and runtime/import i
           )
       }
       const types =
-        layout === 'core'
-          ? `import { createFin, type FinStorage } from '@fin/core';
+        layout === 'turso'
+          ? `import { createTursoAdapter, type TursoAdapterOptions } from '@fin/turso';
+          import { createFin, type FinStorage } from '@fin/core';
+          const options = { url: 'https://unused.invalid', authToken: 'unused', autoMigrate: false } satisfies TursoAdapterOptions;
+          const storage = createTursoAdapter(options);
+          const seam: FinStorage = storage; void seam;
+          const account: Promise<{ balanceMinor: number }> = createFin({storage,vaultId:'opaque'}).getAccount({id:'opaque'}); void account;
+          const prepared: Promise<void> = storage.migrate(); void prepared;
+          const closed: Promise<void> = storage.close(); void closed;
+          // @ts-expect-error Runtime clients are owned internally, not supplied.
+          createTursoAdapter({client:{}});
+          // @ts-expect-error There is no public transport subpath.
+          import { TursoTransport } from '@fin/turso/transport';`
+          : layout === 'core'
+            ? `import { createFin, type FinStorage } from '@fin/core';
         declare const storage: FinStorage; const fin = createFin({ storage, vaultId: 'opaque' });
         const account: Promise<{ balanceMinor: number }> = fin.getAccount({ id: 'opaque' }); void account;`
-          : `import { createFinTools } from '@fin/tools';
+            : `import { createFinTools } from '@fin/tools';
         const tools = createFinTools({ tools: ['vaults.list', 'accounts.create'] });
         const result: Promise<{ account: { balanceMinor: number } }> = tools['accounts.create'].execute({ vaultId: 'opaque', name: 'Cash', nature: 'asset', currency: 'KRW' }); void result;
         // @ts-expect-error Unselected tool is absent from the public type.

@@ -1,6 +1,6 @@
 # Supabase HTTP Data API adapter: consistency and preparation
 
-Research for [#36](https://github.com/iianjun/fin/issues/36), under [Map #34](https://github.com/iianjun/fin/issues/34). Researched 2026-11-08 against repository base `365d21e485586fded76c284e959fee27435d0431`. This is a design investigation, not implemented or service-verified behavior. No credentials, projects, or live databases were accessed.
+Research for [Research Supabase Data API consistency and schema preparation](https://github.com/iianjun/fin/issues/36), under [Add PostgreSQL, Neon, Supabase, and Turso storage adapters](https://github.com/iianjun/fin/issues/34). Researched 2026-11-08 against repository base `365d21e485586fded76c284e959fee27435d0431`. This is a design investigation, not implemented or service-verified behavior. No credentials, projects, or live databases were accessed.
 
 ## Recommendation and alternatives
 

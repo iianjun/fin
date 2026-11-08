@@ -255,3 +255,7 @@ interleaved authenticated callers and unauthorized direct-ID access. The consume
 gate packs actual packages, installs Core-only, D1/tools and SQLite/MCP layouts,
 executes them and compiles public TypeScript usage. No registry publish or
 production deployment is part of these checks.
+
+### Turso (provisional adapter)
+
+The provisional [Turso adapter](packages/turso/README.md) supplies `createTursoAdapter({ url, authToken, autoMigrate? })` for the new Turso Database engine on Node 24.x through the official `@tursodatabase/serverless@1.4.1` SDK. It implements FinStorage, lazy schema preparation, financial changes/history and draining close. There is no fin-owned HTTP transport or SDK patch. SDK-based hosted verification remains pending; previous custom-protocol evidence does not apply. Known SDK limitations remain upstream responsibilities. See [Implement the Turso storage adapter](https://github.com/iianjun/fin/issues/44) for current constraints and evidence.

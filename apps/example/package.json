@@ -5,6 +5,8 @@
   "dependencies": {
     "@fin/core": "workspace:*",
     "@fin/d1": "workspace:*",
-    "@fin/sqlite": "workspace:*"
+    "@fin/sqlite": "workspace:*",
+    "@fin/tools": "workspace:*",
+    "@modelcontextprotocol/server": "2.4.0"
   }
 }

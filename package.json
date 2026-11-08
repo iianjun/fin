@@ -14,7 +14,8 @@
     "example": "pnpm build && node apps/example/sqlite.mjs",
     "example:d1": "pnpm build && node apps/example/d1.mjs",
     "prepare": "lefthook install",
-    "hooks:check": "lefthook run pre-commit"
+    "hooks:check": "lefthook run pre-commit",
+    "build:example:worker": "pnpm build && esbuild apps/example/mcp-worker.mjs --bundle --format=esm --platform=browser --conditions=workerd --outfile=apps/example/dist/mcp-worker.mjs"
   },
   "devDependencies": {
     "@fin/core": "workspace:*",
@@ -24,6 +25,7 @@
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/server": "2.4.0",
     "@types/node": "24.19.2",
+    "esbuild": "0.28.2",
     "lefthook": "2.1.10",
     "miniflare": "4.20260730.0",
     "oxfmt": "0.75.0",

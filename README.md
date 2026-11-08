@@ -259,3 +259,11 @@ production deployment is part of these checks.
 ### Turso (provisional adapter)
 
 The provisional [Turso adapter](packages/turso/README.md) supplies `createTursoAdapter({ url, authToken, autoMigrate? })` for the new Turso Database engine on Node 24.x through the official `@tursodatabase/serverless@1.4.1` SDK. It implements FinStorage, lazy schema preparation, financial changes/history and draining close. There is no fin-owned HTTP transport or SDK patch. SDK-based hosted verification remains pending; previous custom-protocol evidence does not apply. Known SDK limitations remain upstream responsibilities. See [Implement the Turso storage adapter](https://github.com/iianjun/fin/issues/44) for current constraints and evidence.
+
+## Supabase adapter (provisional)
+
+`@fin/supabase` uses the official Supabase SDK with a project URL and server-held
+modern secret key for Data API RPCs. An administrator first applies the bundled SQL; runtime only checks
+compatibility and never installs schema. Core decisions remain local and supplied
+state/history commits use a whole-Vault generation/stamp guard. Node 24.x is the
+initial target. The [hosted RPC verification](https://github.com/iianjun/fin/issues/43#issuecomment-6721868639) passed on Node 24.18.0 / hosted PostgreSQL 17.11 with isolated SQL/RPC names. See [setup, API and verification](packages/supabase/README.md).

@@ -1,0 +1,29 @@
+{
+  "name": "@fin/supabase",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "dist",
+    "sql",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/adapter.d.ts",
+      "import": "./dist/adapter.js"
+    },
+    "./sql/001.sql": "./sql/001.sql"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@fin/provider": "workspace:*",
+    "@supabase/supabase-js": "2.119.0",
+    "zod": "4.6.7"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

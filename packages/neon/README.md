@@ -109,9 +109,23 @@ root-lock waiters. A wrong default search path tests independence from retained
 session settings. Connection/session restart evidence is not compute-restart evidence.
 
 Tested runtime and dependency pins: Node 24.18.0, Neon 1.2.0, test-only ws 8.22.2.
-Local PostgreSQL 18.6/WebSocket gates passed during implementation. Actual hosted
-direct/pooled verification is in progress; do not infer hosted support from local
-success. The implementation issue records fresh hosted results and their commit:
+Verified on 2026-11-12 UTC (2026-11-13 KST) at implementation commit
+[`8e6c07d`](https://github.com/iianjun/fin/commit/8e6c07dba763552afb3a5f7a1ae9102a14e9b78a):
+local PostgreSQL 18.6/WebSocket, actual Neon direct and actual Neon pooled commands
+each passed all 96 tests. Totals include shared baseline and deterministic checks;
+each command also executed the actual Neon financial/fault/lifecycle gates and
+independent packed consumers. Hosted PostgreSQL reported 17.11 (9045acd), aarch64.
+Both endpoint runs included failed-auth socket draining and actual successful COMMIT
+acknowledgement loss, corruption and 30-second driver timeout. Source and built-file
+SHA-256 manifests matched across both runs and the final tree. Independent inspection
+found zero remaining run-owned databases, including earlier exploratory runs.
+
+The same runtime commit passed the six CI jobs (macOS/Linux/Windows defaults,
+PostgreSQL Linux, Supabase/PostgREST Linux and Neon WebSocket Linux); local `pnpm check`
+passed 211 tests with 81 environment-gated skips, which are not integration passes.
+These results establish the tested Neon/Node profile, not a fresh hosted claim for
+other adapters or a compute-restart test. The implementation issue records commands,
+evidence freshness and subsequent changes:
 [Neon implementation #42](https://github.com/iianjun/fin/issues/42).
 
 The driver audit checked the installed pinned distribution: checked-out Client

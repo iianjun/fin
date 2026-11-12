@@ -3,6 +3,7 @@ import { createFin, createVault, listVaults, FinError, type FinStorage } from '@
 import { createSqliteAdapter } from '@fin/sqlite'
 import { hostedTurso, tursoContractTarget } from '../../turso/test/hosted-fixture.js'
 import { openD1Fixture } from '../../d1/test/fixture.js'
+import { openNeonFixture } from '../../neon/test/fixture.js'
 import { openPostgresFixture } from '../../postgres/test/fixture.js'
 
 // Add new real adapter fixtures here; every provider runs the same public financial contract.
@@ -39,6 +40,9 @@ const adapters: {
     : []),
 ]
 if (process.env.FIN_POSTGRES_URL) adapters.push({ name: 'PostgreSQL', open: openPostgresFixture })
+
+if (process.env.FIN_NEON_URL)
+  adapters.push({ name: `Neon ${process.env.FIN_NEON_KIND ?? 'local WS'}`, open: openNeonFixture })
 
 describe.each(adapters)('$name financial contract', ({ open }) => {
   const disposers: (() => void | Promise<void>)[] = []
@@ -149,7 +153,11 @@ describe.each(adapters)('$name financial contract', ({ open }) => {
   test(
     'commits the maximum classification set atomically and rejects larger sets',
     {
-      timeout: hostedTurso ? undefined : process.env.FIN_SUPABASE_HOSTED === '1' ? 120_000 : 20_000,
+      timeout: hostedTurso
+        ? undefined
+        : process.env.FIN_SUPABASE_HOSTED === '1' || process.env.FIN_NEON_HOSTED === '1'
+          ? 120_000
+          : 20_000,
     },
     async () => {
       const { storage, dispose } = await open()

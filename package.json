@@ -19,18 +19,23 @@
     "test:turso:hosted": "pnpm build && node packages/turso/test/hosted.mjs",
     "test:supabase:local": "pnpm build && node packages/supabase/test/verify.mjs local",
     "test:supabase:hosted": "pnpm build && node packages/supabase/test/verify.mjs hosted",
-    "verify:postgres": "node -e \"if (!process.env.FIN_POSTGRES_URL) throw new Error('Set FIN_POSTGRES_URL to a dedicated PostgreSQL test server with CREATEDB permission')\" && pnpm build && vitest run packages/postgres packages/core/src/fin.test.ts packages/tools/src/consumer.test.ts"
+    "verify:postgres": "node -e \"if (!process.env.FIN_POSTGRES_URL) throw new Error('Set FIN_POSTGRES_URL to a dedicated PostgreSQL test server with CREATEDB permission')\" && pnpm build && vitest run packages/postgres packages/core/src/fin.test.ts packages/tools/src/consumer.test.ts",
+    "test:neon:local": "pnpm build && node packages/neon/test/verify.mjs local",
+    "test:neon:hosted": "pnpm build && node packages/neon/test/verify.mjs hosted"
   },
   "devDependencies": {
     "@fin/core": "workspace:*",
     "@fin/d1": "workspace:*",
+    "@fin/neon": "workspace:*",
     "@fin/postgres": "workspace:*",
     "@fin/sqlite": "workspace:*",
     "@fin/tools": "workspace:*",
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/server": "2.4.0",
+    "@neondatabase/serverless": "1.2.0",
     "@types/node": "24.19.2",
     "@types/pg": "8.23.1",
+    "@types/ws": "8.18.1",
     "esbuild": "0.28.2",
     "lefthook": "2.1.10",
     "miniflare": "4.20260730.0",
@@ -39,6 +44,7 @@
     "pg": "8.23.1",
     "typescript": "7.0.2",
     "vitest": "5.0.5",
+    "ws": "8.22.2",
     "zod": "4.6.7"
   },
   "engines": {

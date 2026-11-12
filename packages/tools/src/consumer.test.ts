@@ -1,11 +1,12 @@
 import { identity as supabaseIdentity } from '../../supabase/src/context.js'
 import { openSupabaseFixture } from '../../supabase/test/fixture.js'
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { build } from 'esbuild'
 import { expect, test } from 'vitest'
+import { openNeonFixture } from '../../neon/test/fixture.js'
 import { openPostgresFixture } from '../../postgres/test/fixture.js'
 
 test('real tarballs install independently with public types and runtime/import isolation', async () => {
@@ -26,7 +27,9 @@ test('real tarballs install independently with public types and runtime/import i
     })
   const storeDir = dirname(run(['store', 'path'], process.cwd()).trim())
   const postgres = process.env.FIN_POSTGRES_URL ? await openPostgresFixture() : undefined
+  let neon: Awaited<ReturnType<typeof openNeonFixture>> | undefined
   try {
+    if (process.env.FIN_NEON_URL) neon = await openNeonFixture()
     const overrides: Record<string, string> = {}
     for (const name of [
       'provider',
@@ -37,6 +40,7 @@ test('real tarballs install independently with public types and runtime/import i
       'turso',
       'supabase',
       'postgres',
+      'neon',
     ]) {
       const tarball = join(root, `${name}.tgz`)
       run(['pack', '--out', tarball], resolve('packages', name))
@@ -44,7 +48,7 @@ test('real tarballs install independently with public types and runtime/import i
       // Every standalone consumer sits directly below the tarballs.
       overrides[`@fin/${name}`] = `file:../${name}.tgz`
     }
-    for (const layout of ['core', 'worker', 'sqlite', 'turso', 'supabase', 'postgres']) {
+    for (const layout of ['core', 'worker', 'sqlite', 'turso', 'supabase', 'postgres', 'neon']) {
       const cwd = join(root, layout)
       mkdirSync(cwd)
       const dependencies: Record<string, string> =
@@ -67,7 +71,7 @@ test('real tarballs install independently with public types and runtime/import i
           type: 'module',
           private: true,
           dependencies,
-          ...(['sqlite', 'postgres'].includes(layout)
+          ...(['sqlite', 'postgres', 'neon'].includes(layout)
             ? { devDependencies: { '@types/node': '24.19.2' } }
             : {}),
         }),
@@ -203,6 +207,41 @@ test('real tarballs install independently with public types and runtime/import i
           const tools = createFinTools({ tools: ['balances.query'] });
           if (typeof fin.queryBalances !== 'function' || !tools['balances.query']) throw new Error('Missing API');`,
         )
+      } else if (layout === 'neon') {
+        for (const name of ['pg', '@fin/postgres', '@fin/sqlite', '@fin/d1', 'better-sqlite3'])
+          expect(existsSync(join(cwd, `node_modules/${name}`))).toBe(false)
+        writeFileSync(
+          join(cwd, 'consumer.mjs'),
+          `
+          import { strict as assert } from 'node:assert';
+          import { createFin, createVault } from '@fin/core';
+          import { createNeonAdapter } from '@fin/neon';
+          import { createFinTools } from '@fin/tools';
+          const url = process.env.FIN_NEON_CONSUMER_URL;
+          const proxy = process.env.FIN_NEON_CONSUMER_WS;
+          if (proxy) {
+            const NativeWebSocket = globalThis.WebSocket;
+            globalThis.WebSocket = class extends NativeWebSocket {
+              constructor(address, protocols) { super(new URL(address).hostname === new URL(url).hostname ? proxy : address, protocols); }
+            };
+          }
+          // Import resolution also proves no transitive standalone pg runtime is installed.
+          assert.throws(() => import.meta.resolve('pg'));
+          const storage = createNeonAdapter({ connectionString: url || 'postgres://user@127.0.0.1:1/no-network' });
+          try {
+            if (url) {
+              const { vault } = await createVault({ storage, name: 'Packed Neon' });
+              const fin = createFin({ storage, vaultId: vault.id });
+              const tools = createFinTools({ access: { getFin: async () => fin } });
+              const { account } = await tools['accounts.create'].execute({ vaultId: vault.id, name: 'Cash', nature: 'asset', currency: 'KRW' });
+              await fin.recordIncomeExpense({ kind: 'income', accountId: account.id, amountMinor: 321 });
+              assert.equal((await fin.getAccount({ id: account.id })).balanceMinor, 321);
+              assert.equal((await fin.listChangeRecords()).length, 3);
+              await assert.rejects(tools['accounts.create'].execute({ vaultId: vault.id, name: 'Cash', nature: 'asset', currency: 'KRW' }), {code:'INVALID_INPUT'});
+            }
+          } finally { const closed=storage.close(); assert.equal(storage.close(),closed); await closed; }
+        `,
+        )
       } else if (layout === 'postgres') {
         expect(existsSync(join(cwd, 'node_modules/@fin/sqlite'))).toBe(false)
         expect(existsSync(join(cwd, 'node_modules/better-sqlite3'))).toBe(false)
@@ -251,26 +290,35 @@ test('real tarballs install independently with public types and runtime/import i
           ? await openSupabaseFixture()
           : undefined
       try {
-        execFileSync(process.execPath, ['consumer.mjs'], {
-          cwd,
-          encoding: 'utf8',
-          timeout: 15000,
-          env: {
-            ...process.env,
-            FIN_POSTGRES_CONSUMER_URL: postgres?.connectionString,
-            ...(actualSupabase
-              ? {
-                  FIN_PACKED_SUPABASE_URL: actualSupabase.base,
-                  FIN_PACKED_SUPABASE_JWT: actualSupabase.hosted
-                    ? ''
-                    : actualSupabase.token('service_role'),
-                  FIN_PACKED_SUPABASE_NAMESPACE: actualSupabase.hosted
-                    ? actualSupabase.namespace
-                    : '',
-                }
-              : {}),
-          },
-        })
+        await new Promise<void>((resolve, reject) =>
+          execFile(
+            process.execPath,
+            ['consumer.mjs'],
+            {
+              cwd,
+              encoding: 'utf8',
+              timeout: layout === 'neon' ? 120000 : 15000,
+              env: {
+                ...process.env,
+                FIN_NEON_CONSUMER_URL: neon?.connectionString,
+                FIN_NEON_CONSUMER_WS: neon?.webSocketUrl,
+                FIN_POSTGRES_CONSUMER_URL: postgres?.connectionString,
+                ...(actualSupabase
+                  ? {
+                      FIN_PACKED_SUPABASE_URL: actualSupabase.base,
+                      FIN_PACKED_SUPABASE_JWT: actualSupabase.hosted
+                        ? ''
+                        : actualSupabase.token('service_role'),
+                      FIN_PACKED_SUPABASE_NAMESPACE: actualSupabase.hosted
+                        ? actualSupabase.namespace
+                        : '',
+                    }
+                  : {}),
+              },
+            },
+            (error) => (error ? reject(error) : resolve()),
+          ),
+        )
       } finally {
         await actualSupabase?.dispose()
       }
@@ -343,19 +391,29 @@ test('real tarballs install independently with public types and runtime/import i
         layout === 'worker'
           ? `import { createD1Adapter } from '@fin/d1'; import type { FinStorage } from '@fin/core';
           const storage: FinStorage = createD1Adapter({ accountId: 'test', databaseId: 'test', apiToken: 'test' }); void storage;`
-          : layout === 'postgres'
-            ? `import { createPostgresAdapter } from '@fin/postgres'; import type { FinStorage } from '@fin/core';
+          : layout === 'neon'
+            ? `import { createNeonAdapter, type NeonAdapterOptions } from '@fin/neon'; import type { FinStorage } from '@fin/core';
+            const options = { connectionString: 'postgres://localhost/test', autoMigrate: false } satisfies NeonAdapterOptions;
+            const adapter = createNeonAdapter(options); const storage: FinStorage = adapter; void storage;
+            const prepared: Promise<void> = adapter.migrate(); void prepared;
+            const closed: Promise<void> = adapter.close(); void closed;
+            // @ts-expect-error Clients are owned internally.
+            createNeonAdapter({ client: {} });
+            // @ts-expect-error No public session subpath.
+            import { NeonSession } from '@fin/neon/session';`
+            : layout === 'postgres'
+              ? `import { createPostgresAdapter } from '@fin/postgres'; import type { FinStorage } from '@fin/core';
             const adapter = createPostgresAdapter({ connectionString: 'postgres://localhost/test', autoMigrate: false });
             const storage: FinStorage = adapter; void storage;
             const prepared: Promise<void> = adapter.migrate(); void prepared;
             const closed: Promise<void> = adapter.close(); void closed;`
-            : layout === 'sqlite'
-              ? `import { createSqliteAdapter } from '@fin/sqlite'; import { registerFinTools } from '@fin/tools/mcp';
+              : layout === 'sqlite'
+                ? `import { createSqliteAdapter } from '@fin/sqlite'; import { registerFinTools } from '@fin/tools/mcp';
             import { McpServer } from '@modelcontextprotocol/server';
             const storage = createSqliteAdapter({ filename: ':memory:' });
             const closed: Promise<void> = storage.close(); void closed;
             registerFinTools(new McpServer({ name: 'typed', version: '0.0.0' }), tools);`
-              : ''
+                : ''
       writeFileSync(join(cwd, 'consumer.ts'), types + '\n' + providerTypes)
       execFileSync(
         process.execPath,
@@ -367,14 +425,15 @@ test('real tarballs install independently with public types and runtime/import i
           'NodeNext',
           '--target',
           'ES2023',
-          ...(['sqlite', 'postgres'].includes(layout) ? ['--types', 'node'] : []),
+          ...(['sqlite', 'postgres', 'neon'].includes(layout) ? ['--types', 'node'] : []),
           'consumer.ts',
         ],
         { cwd, encoding: 'utf8', timeout: 15000, stdio: 'inherit' },
       )
     }
   } finally {
+    await neon?.dispose()
     await postgres?.dispose()
     rmSync(root, { recursive: true, force: true })
   }
-}, 180000)
+}, 300000)

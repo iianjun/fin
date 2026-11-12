@@ -3,6 +3,7 @@ import { createFin, createVault, listVaults, FinError, type FinStorage } from '@
 import { createSqliteAdapter } from '@fin/sqlite'
 import { hostedTurso, tursoContractTarget } from '../../turso/test/hosted-fixture.js'
 import { openD1Fixture } from '../../d1/test/fixture.js'
+import { openPostgresFixture } from '../../postgres/test/fixture.js'
 
 // Add new real adapter fixtures here; every provider runs the same public financial contract.
 const adapters: {
@@ -37,6 +38,7 @@ const adapters: {
       ]
     : []),
 ]
+if (process.env.FIN_POSTGRES_URL) adapters.push({ name: 'PostgreSQL', open: openPostgresFixture })
 
 describe.each(adapters)('$name financial contract', ({ open }) => {
   const disposers: (() => void | Promise<void>)[] = []

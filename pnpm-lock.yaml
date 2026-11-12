@@ -172,6 +172,9 @@ importers:
       '@fin/d1':
         specifier: workspace:*
         version: link:packages/d1
+      '@fin/postgres':
+        specifier: workspace:*
+        version: link:packages/postgres
       '@fin/sqlite':
         specifier: workspace:*
         version: link:packages/sqlite
@@ -250,6 +253,19 @@ importers:
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@types/better-sqlite3@9.6.0)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(pg@8.23.1)
+
+  packages/postgres:
+    dependencies:
+      '@fin/provider':
+        specifier: workspace:*
+        version: link:../provider
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
+    devDependencies:
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/provider: {}
 

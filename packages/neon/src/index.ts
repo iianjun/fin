@@ -14,20 +14,6 @@ import { encodeText, readContext, writeChanges } from './storage.js'
 // also rejects an invalid async decision's continuation without blocking unrelated callers.
 const deciding = new AsyncLocalStorage<boolean>()
 
-// Own the session settings per client, without changing process-wide Neon defaults.
-// Waiting for authentication/readiness avoids password-pipeline assumptions and ensures
-// every statement uses the selected WebSocket session, even if poolQueryViaFetch is enabled.
-class NeonSession extends Client {
-  constructor(config?: ClientConfig | string) {
-    super(config)
-    this.neonConfig.webSocketConstructor = globalThis.WebSocket
-    this.neonConfig.pipelineConnect = false
-    this.neonConfig.useSecureWebSocket = true
-    this.neonConfig.forceDisablePgSSL = true
-    this.neonConfig.wsProxy = (host) => `${host}/v2`
-  }
-}
-
 export interface NeonAdapterOptions {
   connectionString: string
   autoMigrate?: boolean
@@ -59,6 +45,24 @@ export function createNeonAdapter(options: NeonAdapterOptions): FinStorage & {
       'The Neon connection URL is invalid.',
       'Supply a valid Neon connection URL.',
     )
+  }
+  // Track from construction, including authentication/connection failures which never
+  // emit pool.connect. Pool.end bookkeeping can finish before native socket closure.
+  const sessions = new Set<Promise<void>>()
+  class NeonSession extends Client {
+    constructor(config?: ClientConfig | string) {
+      super(config)
+      const ended = new Promise<void>((resolve) => this.once('end', resolve))
+      sessions.add(ended)
+      void ended.then(() => sessions.delete(ended))
+      // Own readiness/encryption without changing process-wide Neon defaults.
+      // Await authentication instead of assuming password-pipeline readiness.
+      this.neonConfig.webSocketConstructor = globalThis.WebSocket
+      this.neonConfig.pipelineConnect = false
+      this.neonConfig.useSecureWebSocket = true
+      this.neonConfig.forceDisablePgSSL = true
+      this.neonConfig.wsProxy = (host) => `${host}/v2`
+    }
   }
   const pool = new Pool({
     connectionString: options.connectionString,
@@ -219,6 +223,7 @@ export function createNeonAdapter(options: NeonAdapterOptions): FinStorage & {
         await Promise.allSettled(active)
         try {
           await pool.end()
+          await Promise.all(sessions)
         } catch {
           throw new FinError(
             'STORAGE_FAILURE',

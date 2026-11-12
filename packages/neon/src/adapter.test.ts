@@ -39,21 +39,28 @@ describe.skipIf(!process.env.FIN_NEON_URL)('real Neon contract', () => {
     return { ...f, vault, fin, second, other: createFin({ storage: second, vaultId: vault.id }) }
   }
 
-  test('rejects failed authentication before deciding and sanitizes connection details', async () => {
-    const f = await openNeonFixture()
-    cleanup.push(f.dispose)
-    const url = new URL(f.connectionString)
-    url.password = 'fin-intentionally-invalid-authentication'
-    const storage = createNeonAdapter({ connectionString: url.toString() })
-    cleanup.push(storage.close)
-    const decide = vi.fn(() => ({ kind: 'unchanged' as const, result: null }))
-    await expect(storage.mutate({ kind: 'createVault' }, decide)).rejects.toMatchObject({
-      code: 'STORAGE_FAILURE',
-      application: 'not_applied',
-      message: 'The Neon operation failed.',
-    })
-    expect(decide).not.toHaveBeenCalled()
-  })
+  test.each(['password', 'username'] as const)(
+    'rejects failed %s authentication before deciding and closes its native socket',
+    async (field) => {
+      const f = await openNeonFixture()
+      cleanup.push(f.dispose)
+      const proxy = await openNeonProxy(f.targetConnectionString)
+      cleanup.push(proxy.dispose)
+      const url = new URL(proxy.connectionString)
+      url[field] = 'fin-intentionally-invalid-authentication'
+      const storage = createNeonAdapter({ connectionString: url.toString() })
+      cleanup.push(storage.close)
+      const decide = vi.fn(() => ({ kind: 'unchanged' as const, result: null }))
+      await expect(storage.mutate({ kind: 'createVault' }, decide)).rejects.toMatchObject({
+        code: 'STORAGE_FAILURE',
+        application: 'not_applied',
+        message: 'The Neon operation failed.',
+      })
+      expect(decide).not.toHaveBeenCalled()
+      await storage.close()
+      expect(proxy.openClients).toBe(0)
+    },
+  )
 
   test('keeps each transaction on one native WebSocket session without retained session settings', async () => {
     const f = await fixture()
@@ -91,6 +98,8 @@ describe.skipIf(!process.env.FIN_NEON_URL)('real Neon contract', () => {
     )
     expect(lock).toBeGreaterThan(0)
     expect(dependencies).toBeGreaterThan(lock)
+    await storage.close()
+    expect(proxy.openClients).toBe(0)
   })
 
   test('recovers on a fresh session after idle disconnect and discards a broken admitted write without replay', async () => {
@@ -720,6 +729,71 @@ describe.skipIf(!process.env.FIN_NEON_URL)('real Neon contract', () => {
       }),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
   })
+
+  test(
+    'times out a real successful COMMIT with its acknowledgement stalled, discards the session and never replays',
+    { timeout: 60000 },
+    async () => {
+      const { targetConnectionString, fin, vault } = await fixture()
+      let armed = false,
+        decisions = 0,
+        submitted = 0,
+        committed = 0
+      const proxy = await openNeonProxy(targetConnectionString, {
+        beforeQuery(sql) {
+          if (armed && sql === 'COMMIT') submitted++
+        },
+        afterCommand(command) {
+          if (armed && command === 'COMMIT') {
+            committed++
+            return 'stall'
+          }
+        },
+      })
+      cleanup.push(proxy.dispose)
+      const storage = createNeonAdapter({ connectionString: proxy.connectionString })
+      cleanup.push(storage.close)
+      const before = await fin.listChangeRecords()
+      const updated = {
+        ...vault,
+        name: 'Committed despite real timeout',
+        revision: 'timeout-revision',
+      }
+      const record: ChangeRecord = {
+        id: 'timeout-record',
+        vaultId: vault.id,
+        target: 'vault',
+        targetId: vault.id,
+        action: 'updated',
+        recordedAt: new Date().toISOString(),
+        before: vault,
+        after: updated,
+        balances: [],
+      }
+      const started = Date.now()
+      await expect(
+        storage.mutate({ kind: 'vault', vaultId: vault.id }, () => {
+          decisions++
+          armed = true
+          return { kind: 'changed', changes: { vault: updated }, record, result: null }
+        }),
+      ).rejects.toMatchObject({ code: 'OUTCOME_UNKNOWN', application: 'unknown' })
+      expect(Date.now() - started).toBeGreaterThanOrEqual(29000)
+      expect({ decisions, submitted, committed }).toEqual({
+        decisions: 1,
+        submitted: 1,
+        committed: 1,
+      })
+      expect(await fin.getVault()).toEqual(updated)
+      expect(await fin.listChangeRecords()).toEqual([...before, record])
+      armed = false
+      const discarded = proxy.sessions
+      expect((await storage.read({ kind: 'vault', vaultId: vault.id })).vault).toEqual(updated)
+      expect(proxy.sessions).toBeGreaterThan(discarded)
+      await storage.close()
+      expect(proxy.openClients).toBe(0)
+    },
+  )
 
   test.each(['disconnect', 'malformed'] as const)(
     'loses a real successful COMMIT reply (%s), never replays, and independently inspects persisted state',

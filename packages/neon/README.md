@@ -55,7 +55,8 @@ A missing/malformed COMMIT acknowledgement returns `OUTCOME_UNKNOWN` with
 `application: 'unknown'`. Inspect financial state and Change Records before
 submitting another mutation. Confirmed database rejection remains `CONFLICT` or
 `STORAGE_FAILURE` as appropriate. Errors omit connection URLs, credentials and SQL.
-`close()` immediately stops admission, drains admitted work, then releases the pool.
+`close()` immediately stops admission, drains admitted work, then releases the pool and waits for actual session end events (pool bookkeeping
+may finish before a native WebSocket closes).
 It is asynchronous and idempotent. Cleanup cannot change a confirmed result or
 resolve an uncertain one. A later operation may create a fresh connection after an
 idle failure; it never replays an interrupted operation.
@@ -99,7 +100,8 @@ provisioned; ordinary connections may wake an inactive compute.
 
 The fault proxy forwards PostgreSQL frames through the actual hosted WebSocket
 endpoint (or through TCP only for local tests), preserving one upstream session per
-socket. It observes a real successful COMMIT, then drops or corrupts its acknowledgement.
+socket. It observes a real successful COMMIT, then drops or corrupts its acknowledgement, or withholds all further server frames
+until the actual 30-second driver query timeout fires.
 Independent connections verify persisted state/history; tests count one decision and
 one financial COMMIT. Other gates observe native close events, recover on fresh
 sessions, force pre-commit disconnects, late history failures, schema rollback and

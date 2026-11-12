@@ -57,14 +57,15 @@ export async function openNeonFixture() {
       webSocketUrl: ownedProxy?.webSocketUrl,
       async dispose() {
         try {
-          await ownedStorage.close()
-          await ownedDb.end()
+          await Promise.all([ownedStorage.close(), ownedDb.end()])
         } finally {
+          // Close local bridge sockets before dropping. Ordinary DROP waits for backend
+          // exit without requiring privileges to signal PostgreSQL maintenance workers.
+          await ownedProxy?.dispose()
           try {
-            await admin.query(`DROP DATABASE "${database}" WITH (FORCE)`)
+            await admin.query(`DROP DATABASE "${database}"${local ? '' : ' WITH (FORCE)'}`)
           } finally {
             await admin.end()
-            await ownedProxy?.dispose()
             await adminProxy?.dispose()
           }
         }
@@ -74,7 +75,7 @@ export async function openNeonFixture() {
     await storage?.close()
     await db?.end().catch(() => {})
     try {
-      if (created) await admin.query(`DROP DATABASE "${database}" WITH (FORCE)`)
+      if (created) await admin.query(`DROP DATABASE "${database}"${local ? '' : ' WITH (FORCE)'}`)
     } finally {
       await admin.end()
       await proxy?.dispose()

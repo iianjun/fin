@@ -3,7 +3,9 @@ import { DatabaseError, neonConfig } from '@neondatabase/serverless'
 import { createNeonAdapter } from './index.js'
 
 const driver = vi.hoisted(() => {
-  const session: { Client?: typeof import('@neondatabase/serverless').Client } = {}
+  const session: {
+    Client?: typeof import('@neondatabase/serverless').Client
+  } = {}
   return {
     query: vi.fn<(sql: string) => Promise<{ command: string }>>(),
     release: vi.fn(),
@@ -163,6 +165,7 @@ test('owns native WebSocket readiness and encryption settings without changing g
     const Session = driver.session.Client
     if (!Session) throw new Error('Pool must own the Neon session constructor')
     const client = new Session({ connectionString: 'postgres://user:secret@host/test' })
+    client.emit('end')
     expect(client.neonConfig.webSocketConstructor).toBe(globalThis.WebSocket)
     expect(client.neonConfig.pipelineConnect).toBe(false)
     expect(client.neonConfig.useSecureWebSocket).toBe(true)
@@ -200,4 +203,23 @@ test('treats a client-side commit timeout as unknown even if cleanup could succe
   expect(decide).toHaveBeenCalledOnce()
   expect(driver.release).toHaveBeenCalledWith(true)
   expect(driver.query.mock.calls.filter(([sql]) => sql === 'COMMIT')).toHaveLength(1)
+})
+
+test('close waits for actual session end even after pool bookkeeping has completed', async () => {
+  const storage = createNeonAdapter({ connectionString: 'postgres://host/test' })
+  adapters.push(storage)
+  const Session = driver.session.Client
+  if (!Session) throw new Error('Missing owned session lifecycle')
+  const client = new Session({ connectionString: 'postgres://host/test' })
+  let closed = false
+  const pending = storage.close().then(() => {
+    closed = true
+  })
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(driver.poolEnd).toHaveBeenCalledOnce()
+  expect(closed).toBe(false)
+  client.emit('end')
+  await pending
+  expect(closed).toBe(true)
 })

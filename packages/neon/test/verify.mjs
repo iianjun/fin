@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { execFileSync, spawn } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
 import { Client } from '@neondatabase/serverless'
 
 const mode = process.argv[2]
@@ -46,10 +46,32 @@ if (mode === 'hosted') {
 console.log(
   `Neon verification: ${mode}; ${process.version}; @neondatabase/serverless 1.2.0; native Node WebSocket`,
 )
+console.log(
+  `Implementation commit: ${execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()}; started ${new Date().toISOString()}`,
+)
 let failed = false
 for (const [kind, url] of targets) {
   const runId = randomUUID().replaceAll('-', '').slice(0, 12)
   const prefix = `fin_neon_${runId}_`
+  const sources = new Map()
+  for (const file of [
+    'packages/neon/src/index.ts',
+    'packages/neon/src/schema.ts',
+    'packages/neon/src/storage.ts',
+    'packages/neon/src/adapter.test.ts',
+    'packages/neon/src/lifecycle.test.ts',
+    'packages/neon/test/fixture.ts',
+    'packages/neon/test/proxy.ts',
+    'packages/neon/test/verify.mjs',
+    'packages/neon/dist/index.js',
+    'packages/neon/dist/schema.js',
+    'packages/neon/dist/storage.js',
+    'packages/core/src/fin.test.ts',
+    'packages/tools/src/consumer.test.ts',
+    'pnpm-lock.yaml',
+  ])
+    sources.set(file, createHash('sha256').update(readFileSync(file)).digest('hex'))
+  console.log(`${kind} evidence hashes: ${JSON.stringify(Object.fromEntries(sources))}`)
   let admin
   if (mode === 'hosted') {
     admin = new Client({
@@ -104,6 +126,12 @@ for (const [kind, url] of targets) {
       child.on('error', reject)
       child.on('exit', (code) => resolve(code ?? 1))
     })
+    for (const [file, hash] of sources) {
+      if (createHash('sha256').update(readFileSync(file)).digest('hex') !== hash) {
+        console.error(`${kind}: source changed during verification: ${file}; rerun required`)
+        failed = true
+      }
+    }
     if (code !== 0) failed = true
     console.log(`${kind}: ${code === 0 ? 'PASS' : 'FAIL'}`)
   } catch {

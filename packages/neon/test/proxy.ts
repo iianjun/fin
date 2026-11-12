@@ -25,7 +25,7 @@ export async function openNeonProxy(
   connectionString: string,
   hooks: {
     beforeQuery?(sql: string, session: number): void | Promise<void>
-    afterCommand?(command: string, session: number): 'disconnect' | 'malformed' | void
+    afterCommand?(command: string, session: number): 'disconnect' | 'malformed' | 'stall' | void
   } = {},
 ) {
   const target = new URL(connectionString)
@@ -39,6 +39,7 @@ export async function openNeonProxy(
       ? new WebSocket(`wss://${target.hostname}/v2`, { followRedirects: false })
       : createConnection({ host: target.hostname, port: Number(target.port || 5432) })
     let startup = true
+    let stalled = false
     let incoming = Buffer.alloc(0),
       outgoing = Buffer.alloc(0)
     let queue = once(back, hosted ? 'open' : 'connect').then(() => {})
@@ -85,6 +86,7 @@ export async function openNeonProxy(
       }
     })
     const receive = (bytes: Buffer) => {
+      if (stalled) return
       outgoing = Buffer.concat([outgoing, bytes])
       while (outgoing.length >= 5) {
         const length = outgoing.readInt32BE(1) + 1
@@ -97,6 +99,10 @@ export async function openNeonProxy(
             ? hooks.afterCommand?.(frame.subarray(5, frame.length - 1).toString(), session)
             : undefined
         if (action === 'disconnect') return disconnect()
+        if (action === 'stall') {
+          stalled = true
+          return
+        }
         if (front.readyState === WebSocket.OPEN) {
           if (action === 'malformed') {
             const invalid = Buffer.from(frame)
@@ -131,6 +137,9 @@ export async function openNeonProxy(
   return {
     connectionString: routed.toString(),
     webSocketUrl,
+    get openClients() {
+      return clients.get(hostname)?.size ?? 0
+    },
     get sessions() {
       return sessions
     },

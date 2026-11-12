@@ -8,7 +8,7 @@ server.
 The workspace includes `@fin/provider` for shared financial data types, the
 storage contract, and errors, `@fin/core` for Vault-scoped financial operations,
 `@fin/sqlite` for local SQLite storage, `@fin/d1` for options-based Cloudflare
-D1 REST access, and `@fin/tools` for selectable agent tools with an optional
+D1 REST access, `@fin/postgres` for direct PostgreSQL storage, and `@fin/tools` for selectable agent tools with an optional
 `@fin/tools/mcp` registration entrypoint. Packages are private, names are
 provisional, and nothing has been published to a registry.
 
@@ -120,6 +120,88 @@ the adapter uses the Worker-compatible `redirect: 'manual'` option. This transpo
 adjustment has local Worker and redirected-write regression coverage; an additional
 remote MCP check has not yet run. Current verification status is recorded in the
 [MCP integration task](https://github.com/iianjun/fin/issues/29).
+
+## PostgreSQL
+
+`@fin/postgres` targets Node 24.x and direct PostgreSQL 18.6, with `pg` 8.23.1.
+The adapter owns its connection pool; consumers supply a connection URL:
+
+```ts
+import { createFin, createVault } from '@fin/core'
+import { createPostgresAdapter } from '@fin/postgres'
+
+const connectionString = process.env.DATABASE_URL
+if (!connectionString) throw new Error('DATABASE_URL is required')
+const storage = createPostgresAdapter({ connectionString })
+try {
+  const { vault } = await createVault({ storage, name: 'Household' })
+  const fin = createFin({ storage, vaultId: vault.id })
+  await fin.createAccount({ name: 'Cash', nature: 'asset', currency: 'KRW' })
+} finally {
+  await storage.close()
+}
+```
+
+Validate configuration before constructing the adapter. The factory performs no
+network I/O. Preparation is lazy and automatic by default; `autoMigrate: false`
+checks compatibility without creating tables, and `await storage.migrate()`
+explicitly prepares an empty namespace. Storage owns the `public.fin_*` tables,
+indexes, view and migration ledger in the selected database. It preserves unrelated
+host objects, serializes initial preparation with a transaction advisory lock,
+and rejects missing, partial, unknown or structurally changed schemas without
+repair. The current version supports initial creation only, not data migration.
+Ordinary runtime users need access to fin tables and the history sequence;
+initial preparation additionally needs CREATE on the public schema.
+
+Reads use one repeatable-read transaction. Mutations lock the existing Vault root
+before loading dependencies, invoke the synchronous decision once, and commit
+state, supplied revisions and the exact supplied Change Record together. Writers
+to the same Vault serialize, including name, absence, category, settings and balance
+dependencies; different Vaults can progress independently. Vault creation uses a
+unique primary key. There is no automatic retry of transactions or decisions.
+These guarantees require all writers to use this adapter's locking policy; direct
+SQL edits and concurrent use through other adapters are outside the contract.
+
+The initial context implementation loads a Vault's account/transaction dependencies
+before applying projections, so memory and read cost grow with its ledger size.
+Balances aggregate in PostgreSQL numeric arithmetic and are range checked before
+conversion to JavaScript numbers. Amount columns reject unsafe integers, while
+assignment/relation order and exact history snapshots survive round trips.
+Text uses a reversible encoding for NUL, lone UTF-16 surrogates and backslashes
+in names, identifiers, memos and history. Reads restore the original strings before
+Core decisions and searches; literal escape sequences remain distinct from the
+characters they resemble. The migration identity includes this encoding policy,
+so a schema prepared with a different text format is rejected without rewriting data.
+
+A lost or malformed COMMIT acknowledgement returns `OUTCOME_UNKNOWN`, even if
+rollback or cleanup also fails. Inspect state and Change Records before deciding
+whether to submit again. `close()` rejects new work, drains admitted operations,
+then closes the pool; repeated calls share the same completion promise. Closing
+from inside a decision is rejected. Broken sessions are discarded, and cleanup
+cannot replace a confirmed financial result.
+
+Run the actual-engine gates against a dedicated test server whose account can
+create databases (a non-superuser with CREATEDB is sufficient):
+
+```sh
+# Set FIN_POSTGRES_URL through your local secret/environment configuration.
+pnpm verify:postgres
+```
+
+This command fails if the variable is missing. Each fixture creates a unique
+`fin_test_*` database and drops only its own database, including after failure.
+It covers the shared financial contract, separate-client races, snapshots,
+preparation/late-write rollback, a wire-level lost successful COMMIT reply,
+lifecycle, existing tools and independent JS/TS tarball consumers. The wire fault
+proxy is for local plaintext test connections; it forces `sslmode=disable` and
+must not be used to intercept a production or TLS-required endpoint.
+`pnpm check` retains all existing SQLite/D1/stdio/Worker regressions and always
+runs deterministic PostgreSQL lifecycle/fault and package/type/import checks.
+Without `FIN_POSTGRES_URL`, actual PostgreSQL tests are skipped, not counted as
+verification. CI adds a Linux PostgreSQL 18.6 service pinned by image digest.
+No other PostgreSQL major, Node major, Worker runtime or service-specific adapter
+is claimed by these tests. Detailed execution evidence belongs to
+[Implement the PostgreSQL storage adapter](https://github.com/iianjun/fin/issues/41).
 
 ## Agent tools
 

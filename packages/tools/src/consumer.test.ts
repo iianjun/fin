@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { build } from 'esbuild'
 import { expect, test } from 'vitest'
+import { openPostgresFixture } from '../../postgres/test/fixture.js'
 
 test('real tarballs install independently with public types and runtime/import isolation', async () => {
   // Cover Windows short paths and user directories containing spaces without
@@ -24,16 +25,26 @@ test('real tarballs install independently with public types and runtime/import i
       stdio: 'pipe',
     })
   const storeDir = dirname(run(['store', 'path'], process.cwd()).trim())
+  const postgres = process.env.FIN_POSTGRES_URL ? await openPostgresFixture() : undefined
   try {
     const overrides: Record<string, string> = {}
-    for (const name of ['provider', 'core', 'sqlite', 'd1', 'tools', 'turso', 'supabase']) {
+    for (const name of [
+      'provider',
+      'core',
+      'sqlite',
+      'd1',
+      'tools',
+      'turso',
+      'supabase',
+      'postgres',
+    ]) {
       const tarball = join(root, `${name}.tgz`)
       run(['pack', '--out', tarball], resolve('packages', name))
       // Relative file paths avoid URL-encoding Windows short paths and spaces.
       // Every standalone consumer sits directly below the tarballs.
       overrides[`@fin/${name}`] = `file:../${name}.tgz`
     }
-    for (const layout of ['core', 'worker', 'sqlite', 'turso', 'supabase']) {
+    for (const layout of ['core', 'worker', 'sqlite', 'turso', 'supabase', 'postgres']) {
       const cwd = join(root, layout)
       mkdirSync(cwd)
       const dependencies: Record<string, string> =
@@ -45,8 +56,8 @@ test('real tarballs install independently with public types and runtime/import i
           : { '@fin/core': overrides['@fin/core'] ?? '' }
       if (layout !== 'core' && layout !== 'turso' && layout !== 'supabase') {
         dependencies['@fin/tools'] = overrides['@fin/tools'] ?? ''
-        dependencies[`@fin/${layout === 'worker' ? 'd1' : 'sqlite'}`] =
-          overrides[`@fin/${layout === 'worker' ? 'd1' : 'sqlite'}`] ?? ''
+        dependencies[`@fin/${layout === 'worker' ? 'd1' : layout}`] =
+          overrides[`@fin/${layout === 'worker' ? 'd1' : layout}`] ?? ''
       }
       if (layout === 'sqlite') dependencies['@modelcontextprotocol/server'] = '2.4.0'
       writeFileSync(
@@ -56,7 +67,9 @@ test('real tarballs install independently with public types and runtime/import i
           type: 'module',
           private: true,
           dependencies,
-          ...(layout === 'sqlite' ? { devDependencies: { '@types/node': '24.19.2' } } : {}),
+          ...(['sqlite', 'postgres'].includes(layout)
+            ? { devDependencies: { '@types/node': '24.19.2' } }
+            : {}),
         }),
       )
       writeFileSync(
@@ -190,6 +203,30 @@ test('real tarballs install independently with public types and runtime/import i
           const tools = createFinTools({ tools: ['balances.query'] });
           if (typeof fin.queryBalances !== 'function' || !tools['balances.query']) throw new Error('Missing API');`,
         )
+      } else if (layout === 'postgres') {
+        expect(existsSync(join(cwd, 'node_modules/@fin/sqlite'))).toBe(false)
+        expect(existsSync(join(cwd, 'node_modules/better-sqlite3'))).toBe(false)
+        expect(existsSync(join(cwd, 'node_modules/@fin/d1'))).toBe(false)
+        writeFileSync(
+          join(cwd, 'consumer.mjs'),
+          `
+          import { strict as assert } from 'node:assert';
+          import { createFin, createVault } from '@fin/core';
+          import { createPostgresAdapter } from '@fin/postgres';
+          const url = process.env.FIN_POSTGRES_CONSUMER_URL;
+          const storage = createPostgresAdapter({ connectionString: url || 'postgres://user@127.0.0.1:1/no-network' });
+          try {
+            if (url) {
+              const { vault } = await createVault({ storage, name: 'Packed PostgreSQL' });
+              const fin = createFin({ storage, vaultId: vault.id });
+              const { account } = await fin.createAccount({ name: 'Cash', nature: 'asset', currency: 'KRW' });
+              await fin.recordIncomeExpense({ kind: 'income', accountId: account.id, amountMinor: 321 });
+              assert.equal((await fin.getAccount({ id: account.id })).balanceMinor, 321);
+              assert.equal((await fin.listChangeRecords()).length, 3);
+            }
+          } finally { await storage.close(); }
+        `,
+        )
       } else {
         writeFileSync(
           join(cwd, 'consumer.mjs'),
@@ -220,6 +257,7 @@ test('real tarballs install independently with public types and runtime/import i
           timeout: 15000,
           env: {
             ...process.env,
+            FIN_POSTGRES_CONSUMER_URL: postgres?.connectionString,
             ...(actualSupabase
               ? {
                   FIN_PACKED_SUPABASE_URL: actualSupabase.base,
@@ -236,7 +274,7 @@ test('real tarballs install independently with public types and runtime/import i
       } finally {
         await actualSupabase?.dispose()
       }
-      if (layout !== 'sqlite' && layout !== 'turso' && layout !== 'supabase') {
+      if (layout === 'core' || layout === 'worker') {
         const bundle = await build({
           entryPoints: [join(cwd, 'consumer.mjs')],
           bundle: true,
@@ -305,13 +343,19 @@ test('real tarballs install independently with public types and runtime/import i
         layout === 'worker'
           ? `import { createD1Adapter } from '@fin/d1'; import type { FinStorage } from '@fin/core';
           const storage: FinStorage = createD1Adapter({ accountId: 'test', databaseId: 'test', apiToken: 'test' }); void storage;`
-          : layout === 'sqlite'
-            ? `import { createSqliteAdapter } from '@fin/sqlite'; import { registerFinTools } from '@fin/tools/mcp';
+          : layout === 'postgres'
+            ? `import { createPostgresAdapter } from '@fin/postgres'; import type { FinStorage } from '@fin/core';
+            const adapter = createPostgresAdapter({ connectionString: 'postgres://localhost/test', autoMigrate: false });
+            const storage: FinStorage = adapter; void storage;
+            const prepared: Promise<void> = adapter.migrate(); void prepared;
+            const closed: Promise<void> = adapter.close(); void closed;`
+            : layout === 'sqlite'
+              ? `import { createSqliteAdapter } from '@fin/sqlite'; import { registerFinTools } from '@fin/tools/mcp';
             import { McpServer } from '@modelcontextprotocol/server';
             const storage = createSqliteAdapter({ filename: ':memory:' });
             const closed: Promise<void> = storage.close(); void closed;
             registerFinTools(new McpServer({ name: 'typed', version: '0.0.0' }), tools);`
-            : ''
+              : ''
       writeFileSync(join(cwd, 'consumer.ts'), types + '\n' + providerTypes)
       execFileSync(
         process.execPath,
@@ -323,13 +367,14 @@ test('real tarballs install independently with public types and runtime/import i
           'NodeNext',
           '--target',
           'ES2023',
-          ...(layout === 'sqlite' ? ['--types', 'node'] : []),
+          ...(['sqlite', 'postgres'].includes(layout) ? ['--types', 'node'] : []),
           'consumer.ts',
         ],
         { cwd, encoding: 'utf8', timeout: 15000, stdio: 'inherit' },
       )
     }
   } finally {
+    await postgres?.dispose()
     rmSync(root, { recursive: true, force: true })
   }
 }, 180000)

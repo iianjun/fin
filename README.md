@@ -8,7 +8,7 @@ server.
 The workspace includes `@fin/provider` for shared financial data types, the
 storage contract, and errors, `@fin/core` for Vault-scoped financial operations,
 `@fin/sqlite` for local SQLite storage, `@fin/d1` for options-based Cloudflare
-D1 REST access, `@fin/postgres` for direct PostgreSQL storage, and `@fin/tools` for selectable agent tools with an optional
+D1 REST access, `@fin/postgres` for direct PostgreSQL storage, `@fin/neon` for Neon WebSocket storage, and `@fin/tools` for selectable agent tools with an optional
 `@fin/tools/mcp` registration entrypoint. Packages are private, names are
 provisional, and nothing has been published to a registry.
 
@@ -120,6 +120,16 @@ the adapter uses the Worker-compatible `redirect: 'manual'` option. This transpo
 adjustment has local Worker and redirected-write regression coverage; an additional
 remote MCP check has not yet run. Current verification status is recorded in the
 [MCP integration task](https://github.com/iianjun/fin/issues/29).
+
+## Neon
+
+[`@fin/neon`](packages/neon/README.md) provides settings-owned Neon WebSocket
+sessions on Node 24.x, with `createNeonAdapter({ connectionString, autoMigrate? })`,
+explicit `migrate()` and draining `close()`. It uses the pinned official Neon driver
+without requiring the standalone `pg` runtime. Local integration runs with
+`pnpm test:neon:local`; actual direct/pooled verification is a separate required
+`pnpm test:neon:hosted` gate. See the package guide for credentials, isolation,
+transaction guarantees and the current support-evidence status.
 
 ## PostgreSQL
 

@@ -18,7 +18,8 @@
     "build:example:worker": "pnpm build && esbuild apps/example/mcp-worker.mjs --bundle --format=esm --platform=browser --conditions=workerd --outfile=apps/example/dist/mcp-worker.mjs",
     "test:turso:hosted": "pnpm build && node packages/turso/test/hosted.mjs",
     "test:supabase:local": "pnpm build && node packages/supabase/test/verify.mjs local",
-    "test:supabase:hosted": "pnpm build && node packages/supabase/test/verify.mjs hosted"
+    "test:supabase:hosted": "pnpm build && node packages/supabase/test/verify.mjs hosted",
+    "verify:postgres": "node -e \"if (!process.env.FIN_POSTGRES_URL) throw new Error('Set FIN_POSTGRES_URL to a dedicated PostgreSQL test server with CREATEDB permission')\" && pnpm build && vitest run packages/postgres packages/core/src/fin.test.ts packages/tools/src/consumer.test.ts"
   },
   "devDependencies": {
     "@fin/core": "workspace:*",

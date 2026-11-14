@@ -1,5 +1,5 @@
 {
-  "name": "@fin/tools",
+  "name": "@fin-kit/tools",
   "version": "0.0.0",
   "private": true,
   "files": [
@@ -20,7 +20,7 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@fin/core": "workspace:*",
+    "@fin-kit/core": "workspace:*",
     "zod": "4.6.7"
   },
   "peerDependencies": {

@@ -1,5 +1,5 @@
-import { createFin, createVault } from '@fin/core'
-import { createSqliteAdapter } from '@fin/sqlite'
+import { createFin, createVault } from '@fin-kit/core'
+import { createSqliteAdapter } from '@fin-kit/sqlite'
 
 const storage = createSqliteAdapter({ filename: ':memory:' })
 try {

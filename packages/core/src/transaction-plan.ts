@@ -1,11 +1,11 @@
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import type {
   Account,
   BalanceChange,
   DomainContext,
   Transaction,
   TransactionSnapshot,
-} from '@fin/provider'
+} from '@fin-kit/provider'
 import { calendarDate, invalid, money, required } from './validation.js'
 
 export function duplicate(c: Readonly<DomainContext>, transaction: Transaction, allowed?: boolean) {

@@ -1,5 +1,5 @@
 {
-  "name": "@fin/turso",
+  "name": "@fin-kit/turso",
   "version": "0.0.0",
   "private": true,
   "files": [
@@ -17,7 +17,7 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@fin/provider": "workspace:*",
+    "@fin-kit/provider": "workspace:*",
     "@tursodatabase/serverless": "1.4.1",
     "zod": "4.6.7"
   },

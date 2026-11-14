@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Client } from 'pg'
-import { createPostgresAdapter } from '@fin/postgres'
+import { createPostgresAdapter } from '@fin-kit/postgres'
 
 /** A run-owned database, independent inspection connection and complete scoped cleanup. */
 export async function openPostgresFixture() {

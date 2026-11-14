@@ -1,5 +1,5 @@
 import { DatabaseError, type PoolClient } from '@neondatabase/serverless'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 
 const initialMigration = `
 -- fin text encoding: backslash-v1 (NUL and lone UTF-16 surrogates).

@@ -1,5 +1,5 @@
 {
-  "name": "@fin/core",
+  "name": "@fin-kit/core",
   "version": "0.0.0",
   "private": true,
   "files": [
@@ -16,6 +16,6 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@fin/provider": "workspace:*"
+    "@fin-kit/provider": "workspace:*"
   }
 }

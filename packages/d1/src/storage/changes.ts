@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
-import type { ChangeRecord, DomainChanges, MutationRequest } from '@fin/provider'
+import type { ChangeRecord, DomainChanges, MutationRequest } from '@fin-kit/provider'
 import * as schema from './schema.js'
 
 // Compile the decided changes without executing SQL; the adapter commits the complete plan once.

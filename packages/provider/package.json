@@ -1,5 +1,5 @@
 {
-  "name": "@fin/provider",
+  "name": "@fin-kit/provider",
   "version": "0.0.0",
   "private": true,
   "files": [

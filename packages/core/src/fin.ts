@@ -1,5 +1,5 @@
-import type { ChangeRecord, FinStorage, Vault, VaultSettings } from '@fin/provider'
-import { FinError } from '@fin/provider'
+import type { ChangeRecord, FinStorage, Vault, VaultSettings } from '@fin-kit/provider'
+import { FinError } from '@fin-kit/provider'
 import { Accounts } from './accounts.js'
 import { Categories } from './categories.js'
 import { change } from './change.js'

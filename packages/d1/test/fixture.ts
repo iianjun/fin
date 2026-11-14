@@ -1,6 +1,6 @@
 import { Miniflare } from 'miniflare'
 import { vi } from 'vitest'
-import { createD1Adapter } from '@fin/d1'
+import { createD1Adapter } from '@fin-kit/d1'
 
 // This fixture emulates only the public REST envelope. SQL executes in actual
 // local D1. It is not evidence of the remote REST service's behavior.

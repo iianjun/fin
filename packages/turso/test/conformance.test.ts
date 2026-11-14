@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { createFin, createVault, listVaults } from '@fin/core'
+import { createFin, createVault, listVaults } from '@fin-kit/core'
 import { openTursoFixture } from './fixture.js'
 import { hostedTurso, openHostedTursoFixture } from './hosted-fixture.js'
 
@@ -300,7 +300,7 @@ describe(
         before: f.vault,
         after: { ...f.vault, name: '한글\u0000🙂', revision: 'supplied-revision' },
         balances: [],
-      } satisfies import('@fin/core').ChangeRecord
+      } satisfies import('@fin-kit/core').ChangeRecord
       const decide = vi.fn(
         () =>
           ({

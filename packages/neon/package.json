@@ -1,5 +1,5 @@
 {
-  "name": "@fin/neon",
+  "name": "@fin-kit/neon",
   "version": "0.0.0",
   "private": true,
   "files": [
@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@fin/provider": "workspace:*",
+    "@fin-kit/provider": "workspace:*",
     "@neondatabase/serverless": "1.2.0"
   },
   "engines": {

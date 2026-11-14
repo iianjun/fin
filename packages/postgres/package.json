@@ -1,5 +1,5 @@
 {
-  "name": "@fin/postgres",
+  "name": "@fin-kit/postgres",
   "version": "0.0.0",
   "private": true,
   "files": [
@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@fin/provider": "workspace:*",
+    "@fin-kit/provider": "workspace:*",
     "pg": "8.23.1"
   },
   "devDependencies": {

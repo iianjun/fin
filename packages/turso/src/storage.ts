@@ -1,12 +1,12 @@
 import { z } from 'zod'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import type {
   DomainContext,
   DomainChanges,
   MutationRequest,
   ReadRequest,
   ChangeRecord,
-} from '@fin/provider'
+} from '@fin-kit/provider'
 import { isProjection, isWrite, type OperationSession, type SqlValue } from './session.js'
 
 // These schemas validate both database projections and caller-supplied plans.

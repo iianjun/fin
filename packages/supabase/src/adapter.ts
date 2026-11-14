@@ -1,14 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { z } from 'zod'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import type {
   DomainContext,
   FinStorage,
   MutationDecision,
   MutationRequest,
   ReadRequest,
-} from '@fin/provider'
+} from '@fin-kit/provider'
 import {
   changeRecord,
   changesSchema,

@@ -1,5 +1,5 @@
 {
-  "name": "@fin/d1",
+  "name": "@fin-kit/d1",
   "version": "0.0.0",
   "private": true,
   "files": [
@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@fin/provider": "workspace:*",
+    "@fin-kit/provider": "workspace:*",
     "drizzle-orm": "0.45.4"
   }
 }

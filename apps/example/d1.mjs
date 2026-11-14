@@ -1,5 +1,5 @@
-import { listVaults } from '@fin/core'
-import { createD1Adapter } from '@fin/d1'
+import { listVaults } from '@fin-kit/core'
+import { createD1Adapter } from '@fin-kit/d1'
 
 const { CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_D1_DATABASE_ID, CLOUDFLARE_API_TOKEN } = process.env
 if (

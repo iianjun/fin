@@ -1,7 +1,7 @@
 import { Client } from 'pg'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { createFin, createVault, listVaults } from '@fin/core'
-import type { ChangeRecord, MutationDecision } from '@fin/provider'
+import { createFin, createVault, listVaults } from '@fin-kit/core'
+import type { ChangeRecord, MutationDecision } from '@fin-kit/provider'
 import { openSupabaseFixture } from './fixture.js'
 import { identity } from '../src/context.js'
 

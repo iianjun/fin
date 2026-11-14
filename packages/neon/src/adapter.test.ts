@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { createFin, createVault, listVaults } from '@fin/core'
-import { createNeonAdapter } from '@fin/neon'
-import { createFinTools } from '@fin/tools'
-import type { ChangeRecord, MutationDecision } from '@fin/provider'
+import { createFin, createVault, listVaults } from '@fin-kit/core'
+import { createNeonAdapter } from '@fin-kit/neon'
+import { createFinTools } from '@fin-kit/tools'
+import type { ChangeRecord, MutationDecision } from '@fin-kit/provider'
 import { openNeonFixture } from '../test/fixture.js'
 import { openNeonProxy } from '../test/proxy.js'
 

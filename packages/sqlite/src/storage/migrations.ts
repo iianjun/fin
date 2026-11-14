@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 import { getTableColumns, getTableName } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import * as schema from './schema.js'
 
 export class SchemaManager {

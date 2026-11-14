@@ -7,7 +7,7 @@ import type {
   FinStorage,
   Transaction,
   TransactionRelation,
-} from '@fin/provider'
+} from '@fin-kit/provider'
 import { change } from './change.js'
 import { accountIds, duplicate, transactionPlan, validateTransaction } from './transaction-plan.js'
 import { calendarDate, invalid, money, required, revision } from './validation.js'

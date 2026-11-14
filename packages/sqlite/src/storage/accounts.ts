@@ -1,6 +1,6 @@
 import { and, eq, getTableColumns, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import * as schema from './schema.js'
 
 export function readAccounts(

@@ -1,12 +1,12 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import type {
   DomainContext,
   FinStorage,
   MutationDecision,
   MutationRequest,
   ReadRequest,
-} from '@fin/provider'
+} from '@fin-kit/provider'
 import { TursoSessions } from './session.js'
 import type { OperationSession } from './session.js'
 import { prepareSchema } from './schema.js'

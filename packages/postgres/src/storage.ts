@@ -11,7 +11,7 @@ import {
   type Account,
   type Category,
   type Transaction,
-} from '@fin/provider'
+} from '@fin-kit/provider'
 
 // PostgreSQL text/jsonb cannot represent NUL or lone UTF-16 surrogates. Escaping
 // the marker as well makes this injective; valid Unicode (including pairs) is unchanged.

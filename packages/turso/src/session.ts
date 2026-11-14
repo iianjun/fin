@@ -1,5 +1,5 @@
 import { Session } from '@tursodatabase/serverless'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import { z } from 'zod'
 
 export type SqlValue = null | string | number | bigint | Uint8Array

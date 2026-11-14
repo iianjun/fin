@@ -5,11 +5,11 @@ A personal-finance library with pluggable storage adapters.
 Consumers choose where to run the library and whether to expose it through an MCP
 server.
 
-The workspace includes `@fin/provider` for shared financial data types, the
-storage contract, and errors, `@fin/core` for Vault-scoped financial operations,
-`@fin/sqlite` for local SQLite storage, `@fin/d1` for options-based Cloudflare
-D1 REST access, `@fin/postgres` for direct PostgreSQL storage, `@fin/neon` for Neon WebSocket storage, and `@fin/tools` for selectable agent tools with an optional
-`@fin/tools/mcp` registration entrypoint. Packages are private, names are
+The workspace includes `@fin-kit/provider` for shared financial data types, the
+storage contract, and errors, `@fin-kit/core` for Vault-scoped financial operations,
+`@fin-kit/sqlite` for local SQLite storage, `@fin-kit/d1` for options-based Cloudflare
+D1 REST access, `@fin-kit/postgres` for direct PostgreSQL storage, `@fin-kit/neon` for Neon WebSocket storage, and `@fin-kit/tools` for selectable agent tools with an optional
+`@fin-kit/tools/mcp` registration entrypoint. Packages are private, names are
 provisional, and nothing has been published to a registry.
 
 ## Workspace
@@ -79,8 +79,8 @@ Consumers supply connection settings; the adapter constructs its own REST access
 and Drizzle queries. It does not accept a database or ORM client:
 
 ```ts
-import { createFin } from '@fin/core'
-import { createD1Adapter } from '@fin/d1'
+import { createFin } from '@fin-kit/core'
+import { createD1Adapter } from '@fin-kit/d1'
 
 const storage = createD1Adapter({ accountId, databaseId, apiToken })
 const fin = createFin({ storage, vaultId })
@@ -123,7 +123,7 @@ remote MCP check has not yet run. Current verification status is recorded in the
 
 ## Neon
 
-[`@fin/neon`](packages/neon/README.md) provides settings-owned Neon WebSocket
+[`@fin-kit/neon`](packages/neon/README.md) provides settings-owned Neon WebSocket
 sessions on Node 24.x, with `createNeonAdapter({ connectionString, autoMigrate? })`,
 explicit `migrate()` and draining `close()`. It uses the pinned official Neon driver
 without requiring the standalone `pg` runtime. Local integration runs with
@@ -133,12 +133,12 @@ transaction guarantees and the current support-evidence status.
 
 ## PostgreSQL
 
-`@fin/postgres` targets Node 24.x and direct PostgreSQL 18.6, with `pg` 8.23.1.
+`@fin-kit/postgres` targets Node 24.x and direct PostgreSQL 18.6, with `pg` 8.23.1.
 The adapter owns its connection pool; consumers supply a connection URL:
 
 ```ts
-import { createFin, createVault } from '@fin/core'
-import { createPostgresAdapter } from '@fin/postgres'
+import { createFin, createVault } from '@fin-kit/core'
+import { createPostgresAdapter } from '@fin-kit/postgres'
 
 const connectionString = process.env.DATABASE_URL
 if (!connectionString) throw new Error('DATABASE_URL is required')
@@ -215,12 +215,12 @@ is claimed by these tests. Detailed execution evidence belongs to
 
 ## Agent tools
 
-Use `@fin/core` directly for ordinary application code. `@fin/tools` adds agent-facing
+Use `@fin-kit/core` directly for ordinary application code. `@fin-kit/tools` adds agent-facing
 descriptions, strict schemas, read/write annotations and execution. It imports no
 MCP server, SQLite driver or host framework. Select only the tools your agent needs:
 
 ```ts
-import { createFinTools, type FinVaultAccess } from '@fin/tools'
+import { createFinTools, type FinVaultAccess } from '@fin-kit/tools'
 
 // Supply the current caller's authorized catalog, creation destination and scoped core.
 declare const access: FinVaultAccess
@@ -272,8 +272,8 @@ Core and D1/tools consumers compile independently without Node typings:
 
 ```ts
 import { McpServer } from '@modelcontextprotocol/server'
-import { createFinTools, type FinVaultAccess } from '@fin/tools'
-import { registerFinTools } from '@fin/tools/mcp'
+import { createFinTools, type FinVaultAccess } from '@fin-kit/tools'
+import { registerFinTools } from '@fin-kit/tools/mcp'
 
 declare const access: FinVaultAccess
 const server = new McpServer({ name: 'fin', version: '0.0.0' })
@@ -354,7 +354,7 @@ The provisional [Turso adapter](packages/turso/README.md) supplies `createTursoA
 
 ## Supabase adapter (provisional)
 
-`@fin/supabase` uses the official Supabase SDK with a project URL and server-held
+`@fin-kit/supabase` uses the official Supabase SDK with a project URL and server-held
 modern secret key for Data API RPCs. An administrator first applies the bundled SQL; runtime only checks
 compatibility and never installs schema. Core decisions remain local and supplied
 state/history commits use a whole-Vault generation/stamp guard. Node 24.x is the

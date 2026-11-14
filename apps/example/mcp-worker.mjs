@@ -1,7 +1,7 @@
-import { createFin, createVault, listVaults, FinError } from '@fin/core'
-import { createD1Adapter } from '@fin/d1'
-import { createFinTools } from '@fin/tools'
-import { registerFinTools } from '@fin/tools/mcp'
+import { createFin, createVault, listVaults, FinError } from '@fin-kit/core'
+import { createD1Adapter } from '@fin-kit/d1'
+import { createFinTools } from '@fin-kit/tools'
+import { registerFinTools } from '@fin-kit/tools/mcp'
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/server/validators/cf-worker'
 

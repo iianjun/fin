@@ -1,6 +1,6 @@
 import { and, eq, getTableColumns, sql } from 'drizzle-orm'
 import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import * as schema from './schema.js'
 
 export async function readAccounts(

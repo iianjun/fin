@@ -1,4 +1,4 @@
-import { FinError, type TransactionFilters } from '@fin/provider'
+import { FinError, type TransactionFilters } from '@fin-kit/provider'
 
 export function invalid(condition: unknown, message: string): asserts condition {
   if (!condition)

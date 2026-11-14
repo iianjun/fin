@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { FinError } from '@fin/provider'
-import type { DomainContext, ReadRequest, MutationRequest } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
+import type { DomainContext, ReadRequest, MutationRequest } from '@fin-kit/provider'
 
 // Strict validation is adapter-local: the HTTP wire never becomes domain data by assertion.
 const text = z.string().min(1)

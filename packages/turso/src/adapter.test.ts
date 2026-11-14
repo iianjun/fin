@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { createFin, createVault, listVaults, FinError } from '@fin/core'
+import { createFin, createVault, listVaults, FinError } from '@fin-kit/core'
 import { createTursoAdapter } from './adapter.js'
 import { openTursoFixture } from '../test/fixture.js'
 
@@ -195,7 +195,7 @@ test('calls one synchronous decision, preserves its result and exact supplied re
     before: f.vault,
     after: { ...f.vault, revision: 'supplied-revision', name: '한글\u0000🙂' },
     balances: [],
-  } satisfies import('@fin/core').ChangeRecord
+  } satisfies import('@fin-kit/core').ChangeRecord
   const result = { opaque: Symbol('same result') }
   const decide = vi.fn(
     () => ({ kind: 'changed', changes: { vault: record.after }, record, result }) as const,
@@ -352,7 +352,7 @@ test('lost acknowledgement of a real COMMIT returns OUTCOME_UNKNOWN with one dec
     before: f.vault,
     after: result,
     balances: [],
-  } satisfies import('@fin/core').ChangeRecord
+  } satisfies import('@fin-kit/core').ChangeRecord
   const decide = vi.fn(
     () => ({ kind: 'changed', changes: { vault: result }, record, result }) as const,
   )
@@ -365,7 +365,7 @@ test('lost acknowledgement of a real COMMIT returns OUTCOME_UNKNOWN with one dec
   expect(await f.fin.listChangeRecords({ targetId: f.vault.id })).toContainEqual(record)
 })
 
-function vaultRename(vault: import('@fin/core').Vault, id: string) {
+function vaultRename(vault: import('@fin-kit/core').Vault, id: string) {
   const after = { ...vault, name: id, revision: id }
   const record = {
     id,
@@ -377,7 +377,7 @@ function vaultRename(vault: import('@fin/core').Vault, id: string) {
     before: vault,
     after,
     balances: [],
-  } satisfies import('@fin/core').ChangeRecord
+  } satisfies import('@fin-kit/core').ChangeRecord
   return vi.fn(
     () => ({ kind: 'changed', changes: { vault: after }, record, result: after }) as const,
   )

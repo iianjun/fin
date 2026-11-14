@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest'
-import { createFin, createVault, listVaults, FinError } from '@fin/core'
-import { createD1Adapter } from '@fin/d1'
+import { createFin, createVault, listVaults, FinError } from '@fin-kit/core'
+import { createD1Adapter } from '@fin-kit/d1'
 import { openD1Fixture } from '../test/fixture.js'
 
 const disposers: (() => Promise<void>)[] = []

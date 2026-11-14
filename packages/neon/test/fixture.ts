@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Client } from '@neondatabase/serverless'
-import { createNeonAdapter } from '@fin/neon'
+import { createNeonAdapter } from '@fin-kit/neon'
 import { openNeonProxy } from './proxy.js'
 
 /** Run-owned databases, native WS inspection, direct administration and scoped cleanup.

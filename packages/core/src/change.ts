@@ -1,11 +1,11 @@
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import type {
   ChangeRecord,
   DomainChanges,
   DomainContext,
   FinStorage,
   MutationRequest,
-} from '@fin/provider'
+} from '@fin-kit/provider'
 import { entityId, required } from './validation.js'
 
 interface Planned<T> {

@@ -1,4 +1,4 @@
-import type { FinStorage, TransactionFilters } from '@fin/provider'
+import type { FinStorage, TransactionFilters } from '@fin-kit/provider'
 import { accountIds } from './transaction-plan.js'
 import { entityId, money, queryFilters, required } from './validation.js'
 

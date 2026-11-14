@@ -1,12 +1,12 @@
 # Turso adapter
 
-Provisional `@fin/turso` targets the new Turso Database engine on Node **24.x**, using the official **`@tursodatabase/serverless@1.4.1`** SDK. The package exposes `createTursoAdapter` and its options type. It has no fin-owned HTTP protocol, SDK fork, patch, custom fetch option or public transport entrypoint.
+Provisional `@fin-kit/turso` targets the new Turso Database engine on Node **24.x**, using the official **`@tursodatabase/serverless@1.4.1`** SDK. The package exposes `createTursoAdapter` and its options type. It has no fin-owned HTTP protocol, SDK fork, patch, custom fetch option or public transport entrypoint.
 
 **SDK-based hosted verification is pending.** Earlier actual-service results used a removed custom protocol implementation and do not certify this SDK path. Known SDK transport/response-validation limitations remain upstream responsibilities; fin does not replace the SDK to work around them. See [implementation and current evidence](https://github.com/iianjun/fin/issues/44).
 
 ```ts
-import { createTursoAdapter } from '@fin/turso'
-import { createFin, createVault } from '@fin/core'
+import { createTursoAdapter } from '@fin-kit/turso'
+import { createFin, createVault } from '@fin-kit/core'
 
 const url = process.env.TURSO_URL
 const authToken = process.env.TURSO_AUTH_TOKEN

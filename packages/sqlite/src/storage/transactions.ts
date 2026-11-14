@@ -1,13 +1,13 @@
 import { and, eq, inArray, or, gte, lte, isNull } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import type {
   DomainContext,
   MutationRequest,
   ReadRequest,
   Transaction,
   VaultSettings,
-} from '@fin/provider'
+} from '@fin-kit/provider'
 import { readAccounts } from './accounts.js'
 import * as schema from './schema.js'
 

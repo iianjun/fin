@@ -1,5 +1,5 @@
 import { integer, primaryKey, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
-import type { ChangeRecord } from '@fin/provider'
+import type { ChangeRecord } from '@fin-kit/provider'
 
 export const migrations = sqliteTable('fin_migrations', {
   version: integer().primaryKey(),

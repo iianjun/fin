@@ -1,4 +1,4 @@
-export * from '@fin/provider'
+export * from '@fin-kit/provider'
 export { createFin, createVault, listVaults, type Fin } from './fin.js'
 export type {
   IncomeExpenseInput,

@@ -1,4 +1,4 @@
-import type { Account, FinStorage, VaultSettings } from '@fin/provider'
+import type { Account, FinStorage, VaultSettings } from '@fin-kit/provider'
 import { change } from './change.js'
 import { entityId, invalid, label, required, revision } from './validation.js'
 

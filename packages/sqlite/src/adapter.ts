@@ -6,8 +6,8 @@ import type {
   MutationDecision,
   MutationRequest,
   ReadRequest,
-} from '@fin/provider'
-import { FinError } from '@fin/provider'
+} from '@fin-kit/provider'
+import { FinError } from '@fin-kit/provider'
 import { writeChanges } from './storage/changes.js'
 import { readContext } from './storage/context.js'
 import { SchemaManager } from './storage/migrations.js'

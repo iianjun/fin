@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import { isProjection, isWrite, type OperationSession } from './session.js'
 
 // Adapter-specific identity: similar SQLite assets do not imply interoperability.

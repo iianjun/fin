@@ -1,4 +1,4 @@
-import type { Category, FinStorage } from '@fin/provider'
+import type { Category, FinStorage } from '@fin-kit/provider'
 import { change } from './change.js'
 import { invalid, label, required, revision } from './validation.js'
 

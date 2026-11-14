@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { createFin, createVault, listVaults, FinError, type FinStorage } from '@fin/core'
-import { createSqliteAdapter } from '@fin/sqlite'
+import { createFin, createVault, listVaults, FinError, type FinStorage } from '@fin-kit/core'
+import { createSqliteAdapter } from '@fin-kit/sqlite'
 import { hostedTurso, tursoContractTarget } from '../../turso/test/hosted-fixture.js'
 import { openD1Fixture } from '../../d1/test/fixture.js'
 import { openNeonFixture } from '../../neon/test/fixture.js'
@@ -191,7 +191,7 @@ describe.each(adapters)('$name financial contract', ({ open }) => {
         before: null,
         after: vault,
         balances: [],
-      } satisfies import('@fin/core').ChangeRecord
+      } satisfies import('@fin-kit/core').ChangeRecord
       await storage.mutate({ kind: 'createVault' }, () => ({
         kind: 'changed',
         changes: {

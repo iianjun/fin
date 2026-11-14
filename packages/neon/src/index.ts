@@ -6,7 +6,7 @@ import {
   type ClientConfig,
   type PoolClient,
 } from '@neondatabase/serverless'
-import { FinError, type FinStorage } from '@fin/provider'
+import { FinError, type FinStorage } from '@fin-kit/provider'
 import { prepareSchema } from './schema.js'
 import { encodeText, readContext, writeChanges } from './storage.js'
 

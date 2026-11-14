@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { expect, test, vi } from 'vitest'
-import { createFin, createVault, FinError } from '@fin/core'
+import { createFin, createVault, FinError } from '@fin-kit/core'
 import { createSupabaseAdapter } from './adapter.js'
 import { identity } from './context.js'
-import type { DomainContext, MutationDecision } from '@fin/provider'
+import type { DomainContext, MutationDecision } from '@fin-kit/provider'
 
 // Deliberate protocol peer: deterministic faults only, never real storage evidence.
 function peer(fault?: (name: string, value: Record<string, unknown>) => Response | void) {

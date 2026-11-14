@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import type { ChangeRecord, DomainChanges, MutationRequest } from '@fin/provider'
+import type { ChangeRecord, DomainChanges, MutationRequest } from '@fin-kit/provider'
 import * as schema from './schema.js'
 
 // The adapter calls this inside its write transaction after the single decision.

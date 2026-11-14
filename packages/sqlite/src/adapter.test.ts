@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { afterEach, expect, test, vi } from 'vitest'
-import { createFin, createVault, listVaults } from '@fin/core'
-import { createSqliteAdapter } from '@fin/sqlite'
+import { createFin, createVault, listVaults } from '@fin-kit/core'
+import { createSqliteAdapter } from '@fin-kit/sqlite'
 
 const connections: Database.Database[] = []
 const directories: string[] = []
@@ -72,8 +72,8 @@ test('serializes competing writers across native connections and rejects stale r
             id: transaction.id,
             revision: transaction.revision,
             vaultId: vault.id,
-            core: import.meta.resolve('@fin/core'),
-            adapter: import.meta.resolve('@fin/sqlite'),
+            core: import.meta.resolve('@fin-kit/core'),
+            adapter: import.meta.resolve('@fin-kit/sqlite'),
           },
         },
       ),

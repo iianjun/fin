@@ -1,6 +1,6 @@
 # Supabase adapter (provisional)
 
-`@fin/supabase` implements the existing `FinStorage` contract using the official
+`@fin-kit/supabase` implements the existing `FinStorage` contract using the official
 `@supabase/supabase-js 2.119.0` SDK and its Data API `.rpc()` calls. Target: Node **24.x**.
 **Hosted RPC verification passed** on 2026-11-08 with Node 24.18.0 and hosted PostgreSQL 17.11; see the scoped-installation boundary and evidence below.
 No registry release, browser/user-JWT profile, other runtime or concurrent
@@ -13,7 +13,7 @@ same-Vault access through another adapter is promised.
 2. An authorized database owner applies the complete bundled `sql/001.sql` through
    SQL Editor or the existing migration workflow. The installed private schema is
    `fin_supabase`; the three public RPC names start with `fin_supabase_`.
-   The SQL ships in the package; `import.meta.resolve('@fin/supabase/sql/001.sql')`
+   The SQL ships in the package; `import.meta.resolve('@fin-kit/supabase/sql/001.sql')`
    locates it. Application runtime credentials never execute SQL or create tables.
 3. Installation is transactional and serialized by an advisory lock. It accepts
    only an empty namespace. Reapplying it, encountering an existing partial
@@ -25,8 +25,8 @@ same-Vault access through another adapter is promised.
    financial operations are never automatically retried.
 
 ```js
-import { createSupabaseAdapter } from '@fin/supabase'
-import { createFin, createVault } from '@fin/core'
+import { createSupabaseAdapter } from '@fin-kit/supabase'
+import { createFin, createVault } from '@fin-kit/core'
 
 const storage = createSupabaseAdapter({
   url: process.env.SUPABASE_URL,

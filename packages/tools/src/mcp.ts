@@ -1,5 +1,5 @@
 import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
-import { FinError } from '@fin/core'
+import { FinError } from '@fin-kit/core'
 import type { FinTool, FinVaultAccess } from './index.js'
 
 /** Register only; hosts own authentication, connection, transport and shutdown. */

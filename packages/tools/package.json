@@ -1,7 +1,17 @@
 {
-  "name": "@fin/tools",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@fin-kit/tools",
+  "version": "0.1.0",
+  "description": "Selectable financial agent tools with optional MCP registration for fin-kit.",
+  "homepage": "https://github.com/iianjun/fin#readme",
+  "bugs": {
+    "url": "https://github.com/iianjun/fin/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iianjun/fin.git",
+    "directory": "packages/tools"
+  },
   "files": [
     "dist"
   ],
@@ -16,11 +26,15 @@
       "import": "./dist/mcp.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "node --input-type=commonjs -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && pnpm build"
   },
   "dependencies": {
-    "@fin/core": "workspace:*",
+    "@fin-kit/core": "workspace:*",
     "zod": "4.6.7"
   },
   "peerDependencies": {

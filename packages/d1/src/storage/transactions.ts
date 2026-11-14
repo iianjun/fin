@@ -1,13 +1,13 @@
 import { and, eq, inArray, or, gte, lte, isNull, sql } from 'drizzle-orm'
 import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
-import { FinError } from '@fin/provider'
+import { FinError } from '@fin-kit/provider'
 import type {
   DomainContext,
   MutationRequest,
   ReadRequest,
   Transaction,
   VaultSettings,
-} from '@fin/provider'
+} from '@fin-kit/provider'
 import { readAccounts } from './accounts.js'
 import * as schema from './schema.js'
 

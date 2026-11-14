@@ -1,14 +1,14 @@
 # Neon storage
 
-`@fin/neon` targets Node 24.x with the pinned `@neondatabase/serverless` 1.2.0
+`@fin-kit/neon` targets Node 24.x with the pinned `@neondatabase/serverless` 1.2.0
 WebSocket driver and Node's native WebSocket. It owns its pool and sessions; no
 standalone `pg` runtime, HTTP transaction fallback, or injected client is required.
 Hosted support evidence is separate from local proxy evidence. See the verification
 section for the exact commands and current limitations.
 
 ```ts
-import { createFin, createVault } from '@fin/core'
-import { createNeonAdapter } from '@fin/neon'
+import { createFin, createVault } from '@fin-kit/core'
+import { createNeonAdapter } from '@fin-kit/neon'
 
 const connectionString = process.env.DATABASE_URL
 if (!connectionString) throw new Error('DATABASE_URL is required')

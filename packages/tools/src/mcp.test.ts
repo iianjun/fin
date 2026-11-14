@@ -1,8 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client'
 import { McpServer } from '@modelcontextprotocol/server'
-import { createFin, createVault, listVaults, FinError } from '@fin/core'
-import { createSqliteAdapter } from '@fin/sqlite'
+import { createFin, createVault, listVaults, FinError } from '@fin-kit/core'
+import { createSqliteAdapter } from '@fin-kit/sqlite'
 import { createFinTools, type FinVaultAccess } from './index.js'
 import { registerFinTools } from './mcp.js'
 

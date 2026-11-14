@@ -2,6 +2,7 @@
   "name": "fin",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "pnpm --filter \"./packages/*\" --fail-if-no-match -r build",
@@ -24,12 +25,12 @@
     "test:neon:hosted": "pnpm build && node packages/neon/test/verify.mjs hosted"
   },
   "devDependencies": {
-    "@fin/core": "workspace:*",
-    "@fin/d1": "workspace:*",
-    "@fin/neon": "workspace:*",
-    "@fin/postgres": "workspace:*",
-    "@fin/sqlite": "workspace:*",
-    "@fin/tools": "workspace:*",
+    "@fin-kit/core": "workspace:*",
+    "@fin-kit/d1": "workspace:*",
+    "@fin-kit/neon": "workspace:*",
+    "@fin-kit/postgres": "workspace:*",
+    "@fin-kit/sqlite": "workspace:*",
+    "@fin-kit/tools": "workspace:*",
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/server": "2.4.0",
     "@neondatabase/serverless": "1.2.0",

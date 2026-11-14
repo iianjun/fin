@@ -46,7 +46,7 @@ test('real tarballs install independently with public types and runtime/import i
       run(['pack', '--out', tarball], resolve('packages', name))
       // Relative file paths avoid URL-encoding Windows short paths and spaces.
       // Every standalone consumer sits directly below the tarballs.
-      overrides[`@fin/${name}`] = `file:../${name}.tgz`
+      overrides[`@fin-kit/${name}`] = `file:../${name}.tgz`
     }
     for (const layout of ['core', 'worker', 'sqlite', 'turso', 'supabase', 'postgres', 'neon']) {
       const cwd = join(root, layout)
@@ -54,14 +54,14 @@ test('real tarballs install independently with public types and runtime/import i
       const dependencies: Record<string, string> =
         layout === 'turso' || layout === 'supabase'
           ? {
-              [`@fin/${layout}`]: overrides[`@fin/${layout}`] ?? '',
-              '@fin/core': overrides['@fin/core'] ?? '',
+              [`@fin-kit/${layout}`]: overrides[`@fin-kit/${layout}`] ?? '',
+              '@fin-kit/core': overrides['@fin-kit/core'] ?? '',
             }
-          : { '@fin/core': overrides['@fin/core'] ?? '' }
+          : { '@fin-kit/core': overrides['@fin-kit/core'] ?? '' }
       if (layout !== 'core' && layout !== 'turso' && layout !== 'supabase') {
-        dependencies['@fin/tools'] = overrides['@fin/tools'] ?? ''
-        dependencies[`@fin/${layout === 'worker' ? 'd1' : layout}`] =
-          overrides[`@fin/${layout === 'worker' ? 'd1' : layout}`] ?? ''
+        dependencies['@fin-kit/tools'] = overrides['@fin-kit/tools'] ?? ''
+        dependencies[`@fin-kit/${layout === 'worker' ? 'd1' : layout}`] =
+          overrides[`@fin-kit/${layout === 'worker' ? 'd1' : layout}`] ?? ''
       }
       if (layout === 'sqlite') dependencies['@modelcontextprotocol/server'] = '2.4.0'
       writeFileSync(
@@ -88,23 +88,23 @@ test('real tarballs install independently with public types and runtime/import i
       run(['install', '--prefer-offline', '--no-frozen-lockfile', '--store-dir', storeDir], cwd)
       if (layout === 'supabase') {
         for (const name of [
-          '@fin/sqlite',
-          '@fin/d1',
-          '@fin/turso',
-          '@fin/tools',
+          '@fin-kit/sqlite',
+          '@fin-kit/d1',
+          '@fin-kit/turso',
+          '@fin-kit/tools',
           'better-sqlite3',
           'drizzle-orm',
           'pg',
           '@modelcontextprotocol/server',
         ])
           expect(existsSync(join(cwd, 'node_modules', name))).toBe(false)
-        expect(existsSync(join(cwd, 'node_modules/@fin/supabase/sql/001.sql'))).toBe(true)
+        expect(existsSync(join(cwd, 'node_modules/@fin-kit/supabase/sql/001.sql'))).toBe(true)
         writeFileSync(
           join(cwd, 'consumer.mjs'),
           `
           import {strict as assert} from 'node:assert';
-          import {createSupabaseAdapter} from '@fin/supabase';
-          import {createFin,createVault} from '@fin/core';
+          import {createSupabaseAdapter} from '@fin-kit/supabase';
+          import {createFin,createVault} from '@fin-kit/core';
           let calls=0, vault=null, settings=null, stamp=0;
           const real=!!process.env.FIN_PACKED_SUPABASE_URL;
           const transport=async(input,init)=>{
@@ -127,7 +127,7 @@ test('real tarballs install independently with public types and runtime/import i
           const storage=createSupabaseAdapter({url:process.env.FIN_PACKED_SUPABASE_URL??'https://unused.invalid',apiKey:process.env.SUPABASE_TEST_SECRET_KEY??'sb_secret_test',fetch:transport});
           assert.equal(calls,0);assert.equal('close' in storage,false);assert.equal('migrate' in storage,false);
           await storage.checkSchema();
-          await assert.rejects(import('@fin/supabase/context'),{code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+          await assert.rejects(import('@fin-kit/supabase/context'),{code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
           const result=await createVault({storage,name:'Installed'});
           const fin=createFin({storage,vaultId:result.vault.id});
           assert.equal((await fin.getVault()).name,'Installed');
@@ -136,9 +136,9 @@ test('real tarballs install independently with public types and runtime/import i
         )
       } else if (layout === 'turso') {
         for (const name of [
-          '@fin/sqlite',
-          '@fin/d1',
-          '@fin/tools',
+          '@fin-kit/sqlite',
+          '@fin-kit/d1',
+          '@fin-kit/tools',
           'better-sqlite3',
           'drizzle-orm',
           '@modelcontextprotocol/server',
@@ -149,8 +149,8 @@ test('real tarballs install independently with public types and runtime/import i
           `
           import { strict as assert } from 'node:assert';
           import { DatabaseSync } from 'node:sqlite';
-          import { createTursoAdapter } from '@fin/turso';
-          import { createFin, createVault, listVaults } from '@fin/core';
+          import { createTursoAdapter } from '@fin-kit/turso';
+          import { createFin, createVault, listVaults } from '@fin-kit/core';
           const db = new DatabaseSync(':memory:');
           let calls = 0;
           globalThis.fetch = async (_, init) => {
@@ -174,7 +174,7 @@ test('real tarballs install independently with public types and runtime/import i
           };
           const storage = createTursoAdapter({ url: 'https://not-contacted.invalid', authToken: 'unused' });
           assert.equal(calls, 0);
-          await assert.rejects(import('@fin/turso/transport'), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+          await assert.rejects(import('@fin-kit/turso/transport'), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
           try {
             await storage.migrate();
             const { vault } = await createVault({ storage, name:'Installed' });
@@ -187,36 +187,42 @@ test('real tarballs install independently with public types and runtime/import i
           } finally { await storage.close(); db.close(); }`,
         )
       } else if (layout === 'core') {
-        expect(existsSync(join(cwd, 'node_modules/@fin/tools'))).toBe(false)
+        expect(existsSync(join(cwd, 'node_modules/@fin-kit/tools'))).toBe(false)
         writeFileSync(
           join(cwd, 'consumer.mjs'),
-          `import { createFin } from '@fin/core';
+          `import { createFin } from '@fin-kit/core';
           import { strict as assert } from 'node:assert';
           const fin = createFin({ storage: { read() { throw new Error('unexpected I/O') }, mutate() { throw new Error('unexpected I/O') } }, vaultId: 'opaque' });
           assert.equal(typeof fin.recordIncomeExpense, 'function');`,
         )
       } else if (layout === 'worker') {
         expect(existsSync(join(cwd, 'node_modules/@modelcontextprotocol/server'))).toBe(false)
-        expect(existsSync(join(cwd, 'node_modules/@fin/sqlite'))).toBe(false)
+        expect(existsSync(join(cwd, 'node_modules/@fin-kit/sqlite'))).toBe(false)
         writeFileSync(
           join(cwd, 'consumer.mjs'),
-          `import { createFin } from '@fin/core';
-          import { createD1Adapter } from '@fin/d1'; import { createFinTools } from '@fin/tools';
+          `import { createFin } from '@fin-kit/core';
+          import { createD1Adapter } from '@fin-kit/d1'; import { createFinTools } from '@fin-kit/tools';
           const storage = createD1Adapter({ accountId: 'test', databaseId: 'test', apiToken: 'test', fetch() { throw new Error('unexpected I/O') } });
           const fin = createFin({ storage, vaultId: 'opaque' });
           const tools = createFinTools({ tools: ['balances.query'] });
           if (typeof fin.queryBalances !== 'function' || !tools['balances.query']) throw new Error('Missing API');`,
         )
       } else if (layout === 'neon') {
-        for (const name of ['pg', '@fin/postgres', '@fin/sqlite', '@fin/d1', 'better-sqlite3'])
+        for (const name of [
+          'pg',
+          '@fin-kit/postgres',
+          '@fin-kit/sqlite',
+          '@fin-kit/d1',
+          'better-sqlite3',
+        ])
           expect(existsSync(join(cwd, `node_modules/${name}`))).toBe(false)
         writeFileSync(
           join(cwd, 'consumer.mjs'),
           `
           import { strict as assert } from 'node:assert';
-          import { createFin, createVault } from '@fin/core';
-          import { createNeonAdapter } from '@fin/neon';
-          import { createFinTools } from '@fin/tools';
+          import { createFin, createVault } from '@fin-kit/core';
+          import { createNeonAdapter } from '@fin-kit/neon';
+          import { createFinTools } from '@fin-kit/tools';
           const url = process.env.FIN_NEON_CONSUMER_URL;
           const proxy = process.env.FIN_NEON_CONSUMER_WS;
           if (proxy) {
@@ -243,15 +249,15 @@ test('real tarballs install independently with public types and runtime/import i
         `,
         )
       } else if (layout === 'postgres') {
-        expect(existsSync(join(cwd, 'node_modules/@fin/sqlite'))).toBe(false)
+        expect(existsSync(join(cwd, 'node_modules/@fin-kit/sqlite'))).toBe(false)
         expect(existsSync(join(cwd, 'node_modules/better-sqlite3'))).toBe(false)
-        expect(existsSync(join(cwd, 'node_modules/@fin/d1'))).toBe(false)
+        expect(existsSync(join(cwd, 'node_modules/@fin-kit/d1'))).toBe(false)
         writeFileSync(
           join(cwd, 'consumer.mjs'),
           `
           import { strict as assert } from 'node:assert';
-          import { createFin, createVault } from '@fin/core';
-          import { createPostgresAdapter } from '@fin/postgres';
+          import { createFin, createVault } from '@fin-kit/core';
+          import { createPostgresAdapter } from '@fin-kit/postgres';
           const url = process.env.FIN_POSTGRES_CONSUMER_URL;
           const storage = createPostgresAdapter({ connectionString: url || 'postgres://user@127.0.0.1:1/no-network' });
           try {
@@ -270,8 +276,8 @@ test('real tarballs install independently with public types and runtime/import i
         writeFileSync(
           join(cwd, 'consumer.mjs'),
           `import { strict as assert } from 'node:assert';
-          import { createFin, createVault, listVaults } from '@fin/core'; import { createSqliteAdapter } from '@fin/sqlite';
-          import { createFinTools } from '@fin/tools'; import { registerFinTools } from '@fin/tools/mcp'; import { McpServer } from '@modelcontextprotocol/server';
+          import { createFin, createVault, listVaults } from '@fin-kit/core'; import { createSqliteAdapter } from '@fin-kit/sqlite';
+          import { createFinTools } from '@fin-kit/tools'; import { registerFinTools } from '@fin-kit/tools/mcp'; import { McpServer } from '@modelcontextprotocol/server';
           const storage = createSqliteAdapter({ filename: ':memory:' });
           try {
             const access = { listVaults: options => listVaults({ storage, ...options }), createVault: input => createVault({ storage, ...input }), getFin: async vaultId => createFin({ storage, vaultId }) };
@@ -347,8 +353,8 @@ test('real tarballs install independently with public types and runtime/import i
       }
       const types =
         layout === 'supabase'
-          ? `import {createSupabaseAdapter,type SupabaseAdapterOptions} from '@fin/supabase';
-          import {createFin,type FinStorage} from '@fin/core';
+          ? `import {createSupabaseAdapter,type SupabaseAdapterOptions} from '@fin-kit/supabase';
+          import {createFin,type FinStorage} from '@fin-kit/core';
           const options={url:'https://unused.invalid',apiKey:'sb_secret_test'} satisfies SupabaseAdapterOptions;
           const storage=createSupabaseAdapter(options);const seam:FinStorage=storage;void seam;
           const checked:Promise<void>=storage.checkSchema();void checked;
@@ -360,10 +366,10 @@ test('real tarballs install independently with public types and runtime/import i
           // @ts-expect-error Clients are owned internally.
           createSupabaseAdapter({client:{}});
           // @ts-expect-error Internal wire validation is not public.
-          import {readContext} from '@fin/supabase/context';`
+          import {readContext} from '@fin-kit/supabase/context';`
           : layout === 'turso'
-            ? `import { createTursoAdapter, type TursoAdapterOptions } from '@fin/turso';
-          import { createFin, type FinStorage } from '@fin/core';
+            ? `import { createTursoAdapter, type TursoAdapterOptions } from '@fin-kit/turso';
+          import { createFin, type FinStorage } from '@fin-kit/core';
           const options = { url: 'https://unused.invalid', authToken: 'unused', autoMigrate: false } satisfies TursoAdapterOptions;
           const storage = createTursoAdapter(options);
           const seam: FinStorage = storage; void seam;
@@ -373,12 +379,12 @@ test('real tarballs install independently with public types and runtime/import i
           // @ts-expect-error Runtime clients are owned internally, not supplied.
           createTursoAdapter({client:{}});
           // @ts-expect-error There is no public transport subpath.
-          import { TursoTransport } from '@fin/turso/transport';`
+          import { TursoTransport } from '@fin-kit/turso/transport';`
             : layout === 'core'
-              ? `import { createFin, type FinStorage } from '@fin/core';
+              ? `import { createFin, type FinStorage } from '@fin-kit/core';
         declare const storage: FinStorage; const fin = createFin({ storage, vaultId: 'opaque' });
         const account: Promise<{ balanceMinor: number }> = fin.getAccount({ id: 'opaque' }); void account;`
-              : `import { createFinTools } from '@fin/tools';
+              : `import { createFinTools } from '@fin-kit/tools';
         const tools = createFinTools({ tools: ['vaults.list', 'accounts.create'] });
         const result: Promise<{ account: { balanceMinor: number } }> = tools['accounts.create'].execute({ vaultId: 'opaque', name: 'Cash', nature: 'asset', currency: 'KRW' }); void result;
         // @ts-expect-error Unselected tool is absent from the public type.
@@ -389,10 +395,10 @@ test('real tarballs install independently with public types and runtime/import i
         createFinTools({ tools: ['missing'] });`
       const providerTypes =
         layout === 'worker'
-          ? `import { createD1Adapter } from '@fin/d1'; import type { FinStorage } from '@fin/core';
+          ? `import { createD1Adapter } from '@fin-kit/d1'; import type { FinStorage } from '@fin-kit/core';
           const storage: FinStorage = createD1Adapter({ accountId: 'test', databaseId: 'test', apiToken: 'test' }); void storage;`
           : layout === 'neon'
-            ? `import { createNeonAdapter, type NeonAdapterOptions } from '@fin/neon'; import type { FinStorage } from '@fin/core';
+            ? `import { createNeonAdapter, type NeonAdapterOptions } from '@fin-kit/neon'; import type { FinStorage } from '@fin-kit/core';
             const options = { connectionString: 'postgres://localhost/test', autoMigrate: false } satisfies NeonAdapterOptions;
             const adapter = createNeonAdapter(options); const storage: FinStorage = adapter; void storage;
             const prepared: Promise<void> = adapter.migrate(); void prepared;
@@ -400,15 +406,15 @@ test('real tarballs install independently with public types and runtime/import i
             // @ts-expect-error Clients are owned internally.
             createNeonAdapter({ client: {} });
             // @ts-expect-error No public session subpath.
-            import { NeonSession } from '@fin/neon/session';`
+            import { NeonSession } from '@fin-kit/neon/session';`
             : layout === 'postgres'
-              ? `import { createPostgresAdapter } from '@fin/postgres'; import type { FinStorage } from '@fin/core';
+              ? `import { createPostgresAdapter } from '@fin-kit/postgres'; import type { FinStorage } from '@fin-kit/core';
             const adapter = createPostgresAdapter({ connectionString: 'postgres://localhost/test', autoMigrate: false });
             const storage: FinStorage = adapter; void storage;
             const prepared: Promise<void> = adapter.migrate(); void prepared;
             const closed: Promise<void> = adapter.close(); void closed;`
               : layout === 'sqlite'
-                ? `import { createSqliteAdapter } from '@fin/sqlite'; import { registerFinTools } from '@fin/tools/mcp';
+                ? `import { createSqliteAdapter } from '@fin-kit/sqlite'; import { registerFinTools } from '@fin-kit/tools/mcp';
             import { McpServer } from '@modelcontextprotocol/server';
             const storage = createSqliteAdapter({ filename: ':memory:' });
             const closed: Promise<void> = storage.close(); void closed;

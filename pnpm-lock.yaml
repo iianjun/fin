@@ -166,22 +166,22 @@ importers:
 
   .:
     devDependencies:
-      '@fin/core':
+      '@fin-kit/core':
         specifier: workspace:*
         version: link:packages/core
-      '@fin/d1':
+      '@fin-kit/d1':
         specifier: workspace:*
         version: link:packages/d1
-      '@fin/neon':
+      '@fin-kit/neon':
         specifier: workspace:*
         version: link:packages/neon
-      '@fin/postgres':
+      '@fin-kit/postgres':
         specifier: workspace:*
         version: link:packages/postgres
-      '@fin/sqlite':
+      '@fin-kit/sqlite':
         specifier: workspace:*
         version: link:packages/sqlite
-      '@fin/tools':
+      '@fin-kit/tools':
         specifier: workspace:*
         version: link:packages/tools
       '@modelcontextprotocol/client':
@@ -235,16 +235,16 @@ importers:
 
   apps/example:
     dependencies:
-      '@fin/core':
+      '@fin-kit/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@fin/d1':
+      '@fin-kit/d1':
         specifier: workspace:*
         version: link:../../packages/d1
-      '@fin/sqlite':
+      '@fin-kit/sqlite':
         specifier: workspace:*
         version: link:../../packages/sqlite
-      '@fin/tools':
+      '@fin-kit/tools':
         specifier: workspace:*
         version: link:../../packages/tools
       '@modelcontextprotocol/server':
@@ -253,13 +253,13 @@ importers:
 
   packages/core:
     dependencies:
-      '@fin/provider':
+      '@fin-kit/provider':
         specifier: workspace:*
         version: link:../provider
 
   packages/d1:
     dependencies:
-      '@fin/provider':
+      '@fin-kit/provider':
         specifier: workspace:*
         version: link:../provider
       drizzle-orm:
@@ -268,7 +268,7 @@ importers:
 
   packages/neon:
     dependencies:
-      '@fin/provider':
+      '@fin-kit/provider':
         specifier: workspace:*
         version: link:../provider
       '@neondatabase/serverless':
@@ -277,7 +277,7 @@ importers:
 
   packages/postgres:
     dependencies:
-      '@fin/provider':
+      '@fin-kit/provider':
         specifier: workspace:*
         version: link:../provider
       pg:
@@ -292,7 +292,7 @@ importers:
 
   packages/sqlite:
     dependencies:
-      '@fin/provider':
+      '@fin-kit/provider':
         specifier: workspace:*
         version: link:../provider
       better-sqlite3:
@@ -308,7 +308,7 @@ importers:
 
   packages/supabase:
     dependencies:
-      '@fin/provider':
+      '@fin-kit/provider':
         specifier: workspace:*
         version: link:../provider
       '@supabase/supabase-js':
@@ -320,7 +320,7 @@ importers:
 
   packages/tools:
     dependencies:
-      '@fin/core':
+      '@fin-kit/core':
         specifier: workspace:*
         version: link:../core
       '@modelcontextprotocol/server':
@@ -332,7 +332,7 @@ importers:
 
   packages/turso:
     dependencies:
-      '@fin/provider':
+      '@fin-kit/provider':
         specifier: workspace:*
         version: link:../provider
       '@tursodatabase/serverless':

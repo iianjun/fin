@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { createFin, createVault, listVaults } from '@fin/core'
-import { createPostgresAdapter } from '@fin/postgres'
-import { createFinTools } from '@fin/tools'
-import type { ChangeRecord, MutationDecision } from '@fin/provider'
+import { createFin, createVault, listVaults } from '@fin-kit/core'
+import { createPostgresAdapter } from '@fin-kit/postgres'
+import { createFinTools } from '@fin-kit/tools'
+import type { ChangeRecord, MutationDecision } from '@fin-kit/provider'
 import { openPostgresFixture } from '../test/fixture.js'
 import { openPostgresProxy } from '../test/proxy.js'
 

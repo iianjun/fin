@@ -1,7 +1,17 @@
 {
-  "name": "@fin/postgres",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@fin-kit/postgres",
+  "version": "0.1.0",
+  "description": "PostgreSQL storage adapter for fin-kit.",
+  "homepage": "https://github.com/iianjun/fin#readme",
+  "bugs": {
+    "url": "https://github.com/iianjun/fin/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iianjun/fin.git",
+    "directory": "packages/postgres"
+  },
   "files": [
     "dist"
   ],
@@ -12,11 +22,15 @@
       "import": "./dist/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "node --input-type=commonjs -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && pnpm build"
   },
   "dependencies": {
-    "@fin/provider": "workspace:*",
+    "@fin-kit/provider": "workspace:*",
     "pg": "8.23.1"
   },
   "devDependencies": {

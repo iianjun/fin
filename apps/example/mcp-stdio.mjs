@@ -1,7 +1,7 @@
-import { createFin, createVault, listVaults } from '@fin/core'
-import { createSqliteAdapter } from '@fin/sqlite'
-import { createFinTools } from '@fin/tools'
-import { registerFinTools } from '@fin/tools/mcp'
+import { createFin, createVault, listVaults } from '@fin-kit/core'
+import { createSqliteAdapter } from '@fin-kit/sqlite'
+import { createFinTools } from '@fin-kit/tools'
+import { registerFinTools } from '@fin-kit/tools/mcp'
 import { McpServer } from '@modelcontextprotocol/server'
 import { serveStdio } from '@modelcontextprotocol/server/stdio'
 

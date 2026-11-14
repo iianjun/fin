@@ -1,7 +1,17 @@
 {
-  "name": "@fin/supabase",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@fin-kit/supabase",
+  "version": "0.1.0",
+  "description": "Supabase storage adapter for fin-kit.",
+  "homepage": "https://github.com/iianjun/fin#readme",
+  "bugs": {
+    "url": "https://github.com/iianjun/fin/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iianjun/fin.git",
+    "directory": "packages/supabase"
+  },
   "files": [
     "dist",
     "sql",
@@ -15,11 +25,15 @@
     },
     "./sql/001.sql": "./sql/001.sql"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "node --input-type=commonjs -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && pnpm build"
   },
   "dependencies": {
-    "@fin/provider": "workspace:*",
+    "@fin-kit/provider": "workspace:*",
     "@supabase/supabase-js": "2.119.0",
     "zod": "4.6.7"
   },

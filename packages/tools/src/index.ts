@@ -1,4 +1,4 @@
-import { FinError, type Fin, type Vault } from '@fin/core'
+import { FinError, type Fin, type Vault } from '@fin-kit/core'
 import * as z from 'zod'
 
 /** Host-owned authorization. Every method must enforce the current caller's scope. */

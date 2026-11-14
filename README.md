@@ -9,8 +9,10 @@ The workspace includes `@fin-kit/provider` for shared financial data types, the
 storage contract, and errors, `@fin-kit/core` for Vault-scoped financial operations,
 `@fin-kit/sqlite` for local SQLite storage, `@fin-kit/d1` for options-based Cloudflare
 D1 REST access, `@fin-kit/postgres` for direct PostgreSQL storage, `@fin-kit/neon` for Neon WebSocket storage, and `@fin-kit/tools` for selectable agent tools with an optional
-`@fin-kit/tools/mcp` registration entrypoint. Packages are private, names are
-provisional, and nothing has been published to a registry.
+`@fin-kit/tools/mcp` registration entrypoint. Each storage adapter is a separate
+package, so consumers install only the adapters they need. Packages use the
+`@fin-kit` scope and are prepared for public release under the [MIT license](LICENSE).
+Nothing has been published to a registry yet.
 
 ## Workspace
 

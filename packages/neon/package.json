@@ -1,7 +1,17 @@
 {
   "name": "@fin-kit/neon",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Neon WebSocket storage adapter for fin-kit.",
+  "homepage": "https://github.com/iianjun/fin#readme",
+  "bugs": {
+    "url": "https://github.com/iianjun/fin/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iianjun/fin.git",
+    "directory": "packages/neon"
+  },
   "files": [
     "dist"
   ],
@@ -11,6 +21,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json"
